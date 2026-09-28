@@ -637,6 +637,48 @@
     );
   }
 
+  // ---------- sending a run to Claude ----------
+  let dbPromise = null;
+  const getDb = () => {
+    if (!dbPromise) {
+      const c = window.claude;
+      dbPromise = c && typeof c.use === 'function' ? c.use('db').catch(() => null) : Promise.resolve(null);
+    }
+    return dbPromise;
+  };
+
+  async function sendRun(button) {
+    const s = G().s;
+    const report = AIT.Report.build(s);
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Sending…';
+    }
+    const db = await getDb();
+    if (db) {
+      try {
+        await db.doc('runs/' + report.id).set(report);
+        closeModal();
+        toast('Run sent. Tell Claude in the chat that it is there.', 'good');
+        return;
+      } catch (e) {
+        /* fall back to copying */
+      }
+    }
+    showCopy(JSON.stringify(report));
+  }
+
+  function showCopy(text) {
+    openModal(
+      `<div class="eyebrow">Run report</div>
+      <h2>Copy this for Claude</h2>
+      <p>This page can't send the report directly here. Copy it and paste it into your chat with Claude.</p>
+      <textarea id="report-text" class="report-text" readonly>${esc(text)}</textarea>
+      <div class="row gap"><button class="btn primary" data-modal="copy-report">Copy report</button><button class="btn ghost" data-modal="close">Close</button></div>`,
+      'menu',
+    );
+  }
+
   function showOver(s) {
     const v = Sim.derive(s);
     const win = s.over.win;
@@ -650,7 +692,7 @@
         <div><dt>Valuation</dt><dd class="mono">${money(v.valuation)}</dd></div>
         <div><dt>Your stake</dt><dd class="mono">${money(v.netWorth)}</dd></div>
       </dl>
-      <div class="row gap">${win ? '<button class="btn" data-modal="sandbox">Keep playing</button>' : ''}<button class="btn primary" data-modal="newgame">New game</button></div>`,
+      <div class="row gap">${win ? '<button class="btn" data-modal="sandbox">Keep playing</button>' : ''}<button class="btn" data-modal="send-run">Send this run to Claude</button><button class="btn primary" data-modal="newgame">New game</button></div>`,
       'over ' + (win ? 'good' : 'bad'),
       false,
     );
@@ -755,6 +797,7 @@
       `<div class="eyebrow">Menu</div><h2>${esc(G().s.company)}</h2>
       ${HELP}
       <div class="row gap wrap"><button class="btn" data-modal="mentor-toggle">Mentor tips: ${AIT.Mentor.enabled(G().s) ? 'on' : 'off'}</button><button class="btn" data-modal="mentor-replay">Replay tutorial</button></div>
+      <div class="row gap wrap"><button class="btn" data-modal="send-run">Send this run to Claude</button></div>
       <div class="row gap wrap"><button class="btn" data-modal="save">Save now</button><button class="btn" data-modal="close">Resume</button>${ui.confirm === 'newgame' ? '<button class="btn danger" data-modal="really-new">Yes, start over</button>' : '<button class="btn ghost" data-modal="ask-new">New game</button>'}</div>
       <p class="small muted">The game saves itself every month in this browser.</p>`,
       'menu',
@@ -1042,6 +1085,21 @@
       } else if (what === 'really-new' || what === 'newgame') {
         ui.confirm = null;
         showNewGame(false);
+      } else if (what === 'send-run') {
+        sendRun(b);
+      } else if (what === 'copy-report') {
+        const ta = $('report-text');
+        const done = () => toast('Copied. Paste it into your chat with Claude.', 'good');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(ta.value).then(done, () => {
+            ta.focus();
+            ta.select();
+            toast('Select all and copy the text by hand.', 'warn');
+          });
+        } else {
+          ta.focus();
+          ta.select();
+        }
       } else if (what === 'reveal-deploy') {
         const r = A.deploy(g.s, b.dataset.id);
         closeModal();

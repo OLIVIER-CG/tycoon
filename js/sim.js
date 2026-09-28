@@ -29,6 +29,23 @@
     if (toast && hooks.toast) hooks.toast(text, kind);
   }
 
+  // a journal of the player's decisions, used for run reports
+  function log(s, a, extra = {}) {
+    if (!s.log) s.log = [];
+    const last = s.log[s.log.length - 1];
+    if (last && last.a === a && last.d === s.day && a === 'buy' && last.t === extra.t) {
+      last.n++;
+      return;
+    }
+    if (last && last.a === a && a === 'price' && s.day - last.d < 3) {
+      last.to = extra.to;
+      last.d = s.day;
+      return;
+    }
+    s.log.push({ d: s.day, a, ...extra });
+    if (s.log.length > 600) s.log.splice(0, s.log.length - 600);
+  }
+
   function addItem(s, type, x, y) {
     const it = { id: s.nextId++, type, x, y };
     s.items.push(it);
@@ -38,6 +55,8 @@
   function newGame(opts = {}) {
     const s = {
       v: 1,
+      runId: 'run-' + Date.now().toString(36),
+      log: [],
       company: opts.company || 'Nimbus Labs',
       family: opts.family || 'Nova',
       day: 0,
@@ -500,6 +519,7 @@
     const ev = AIT.EVENTS.find((e) => e.id === pending.id);
     const v = derive(s);
     const choice = ev.choices(s, pending.params, v)[idx];
+    log(s, 'choice', { id: ev.id, label: choice.label });
     const text = choice.run(s, pending.params, v);
     if (text) news(s, text, choice.kind || 'info', true);
   }
@@ -630,6 +650,7 @@
       s.cash -= cost;
       s.month.capex += cost;
       addItem(s, type, x, y);
+      log(s, 'buy', { t: type, n: 1 });
       return ok(cost);
     },
 
@@ -645,6 +666,7 @@
       s.items = s.items.filter((i) => i !== it);
       s.cash += refund;
       s.month.capex -= refund;
+      log(s, 'sell', { t: it.type });
       return ok(refund);
     },
 
@@ -656,6 +678,7 @@
       s.cash -= next.moveCost;
       s.month.capex += next.moveCost;
       s.officeLevel++;
+      log(s, 'move', { to: next.name });
       news(s, `${s.company} moves into a ${next.name}.`, 'good', true);
       return ok();
     },
@@ -670,6 +693,7 @@
       s.month.salaries += c.salary;
       s.candidates = s.candidates.filter((x) => x !== c);
       s.staff.push({ id: 's' + s.nextId++, name: c.name, role: c.role, skill: c.skill, salary: c.salary, bio: c.bio || '', morale: 70, trainUntil: 0, perk: 0 });
+      log(s, 'hire', { role: c.role, skill: c.skill, salary: c.salary });
       return ok(`${c.name} joined as ${D.ROLES[c.role].name}`);
     },
 
@@ -681,6 +705,7 @@
       s.month.salaries += p.salary;
       s.staff = s.staff.filter((x) => x !== p);
       for (const q of s.staff) if (!q.founder) q.morale = Math.max(0, q.morale - 4);
+      log(s, 'fire', { role: p.role, skill: p.skill });
       return ok(`${p.name} was let go`);
     },
 
@@ -694,6 +719,7 @@
       s.cash -= cost;
       s.month.other += cost;
       p.trainUntil = s.day + 14;
+      log(s, 'course', { role: p.founder ? 'founder' : p.role, skill: p.skill });
       return ok(`${p.name} is off to a 14-day course`);
     },
 
@@ -741,12 +767,14 @@
         exp: expectedCap(s, sizeId, clean, v),
         loss: [],
       };
+      log(s, 'train', { name: s.training.name, data: Object.keys(clean).filter((k) => clean[k]).join('+') });
       return ok(`Training ${s.training.name}`);
     },
 
     cancelTraining(s) {
       if (!s.training) return no('No training run');
       news(s, `Training of ${s.training.name} was cancelled.`, 'warn');
+      log(s, 'cancel', { name: s.training.name });
       s.training = null;
       return ok();
     },
@@ -766,6 +794,7 @@
       }
       s.hype = Math.min(100, s.hype + gain);
       s.flags.lastDeploy = s.day;
+      log(s, 'deploy', { name: m.name, cap: m.cap });
       news(s, msg + '.', 'good');
       return ok(msg);
     },
@@ -776,6 +805,7 @@
       if (m.id === s.flagshipId) return no('Deploy a different flagship first');
       if (m.size === 'agi') return no('Absolutely not');
       m.open = true;
+      log(s, 'open', { name: m.name });
       const gain = Math.min(12, m.cap * 0.25);
       s.hype = Math.min(100, s.hype + gain);
       s.flags.openBonus = Math.min(1.5, (s.flags.openBonus || 0) + 0.3);
@@ -786,13 +816,21 @@
     },
 
     setPrice(s, p) {
+      const from = s.price;
       s.price = clamp(Math.round(p), 5, 60);
+      if (s.price !== from) log(s, 'price', { from, to: s.price });
       return ok();
     },
 
     setAlloc(s, auto, share) {
+      const before = s.autoAlloc + ':' + s.allocTrain;
       s.autoAlloc = !!auto;
       if (share != null) s.allocTrain = clamp(share, 0, 1);
+      if (before !== s.autoAlloc + ':' + s.allocTrain) {
+        const last = s.log && s.log[s.log.length - 1];
+        if (last && last.a === 'alloc' && last.d === s.day) s.log.pop();
+        log(s, 'alloc', { auto: s.autoAlloc, share: s.allocTrain });
+      }
       return ok();
     },
 
@@ -808,6 +846,7 @@
       const gain = c.hype * (1 - s.hype / 120) * boost * (1 + 0.3 * sat(v.G, 15));
       s.hype = Math.min(100, s.hype + gain);
       s.campaignCd[id] = s.day + c.cd;
+      log(s, 'campaign', { id });
       return ok(`${c.name}: +${gain.toFixed(1)} hype`);
     },
 
@@ -831,6 +870,7 @@
       s.month.funding += o.raise;
       s.equity *= 1 - o.dilution;
       s.rounds.push(o.id);
+      log(s, 'raise', { round: o.name, raise: Math.round(o.raise), pre: Math.round(o.pre), dil: Math.round(o.dilution * 1000) / 10 });
       s.offer = null;
       s.hype = Math.min(100, s.hype + 4);
       if (o.id === 'ipo') s.flags.public = true;
@@ -840,6 +880,7 @@
 
     declineOffer(s) {
       if (!s.offer) return no('No offer');
+      log(s, 'decline', { round: s.offer.name });
       s.offer = null;
       s.roundCd = s.day + 30;
       return ok('Offer declined. Investors will listen again in 30 days.');

@@ -75,6 +75,7 @@ js/render.js      isometric renderer, walking staff, speech bubbles, confetti an
 js/sound.js       synthesized sound effects
 js/ui.js          HUD, panels, modals, launch reveals, chapter cards and toasts
 js/mentor.js      mentor dialogue: tutorial steps and one-off tips
+js/report.js      compact run report for "Send this run to Claude"
 js/main.js        boot, save/load and the main loop
 tools/simulate.js headless balance checker
 ```
