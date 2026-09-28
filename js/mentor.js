@@ -363,6 +363,7 @@
     m.autoMin = false;
     m.completing = 0;
     renderPage(s);
+    if (AIT.Sound) AIT.Sound.play('mentor');
     // read-only tutorial steps bring the thing they talk about into view
     if (kind === 'tut' && !def.done && def.go) AIT.UI.goTo(resolve(def.go, s));
   }

@@ -8,7 +8,6 @@
 
   let cv, ctx, dpr = 1, W = 0, H = 0, cb = {}, bgPattern = null, lastSize = 0;
   let particles = [];
-  let ambientT = 0;
 
   // ---------- color helpers ----------
   const shadeCache = new Map();
@@ -114,6 +113,7 @@
 
   function person(x, y, shirt, id, t, busy) {
     const h1 = hash(id), h2 = hash(id + 'h');
+    if (t < life.celebrateUntil) y -= Math.abs(Math.sin(t * 9 + h1 * 5)) * 7;
     const bob = Math.sin(t * (busy ? 5 : 2) + h1 * 10) * (busy ? 0.6 : 0.9);
     ctx.fillStyle = shirt;
     ctx.beginPath();
@@ -148,7 +148,7 @@
   const ART = {
     desk(cx, cy, it, t, ctxInfo) {
       const p = ctxInfo.deskStaff.get(it.id);
-      if (p) {
+      if (p && !(ctxInfo.walking && ctxInfo.walking.has(p.id))) {
         const [px, py] = P(cx, cy, -0.05, -0.38, 0);
         person(px, py, p.founder ? '#ef5f24' : D.ROLES[p.role].color, p.id, t, !!ctxInfo.training);
       }
@@ -437,6 +437,259 @@
     },
   };
 
+
+  // ---------- office life: people walk, talk and celebrate ----------
+  const life = { walkers: new Map(), nextWalk: 3, nextQuip: 4, bubbles: [], celebrateUntil: 0, confetti: [], wantCelebrate: false };
+  const HANGOUT = {
+    coffee: 'break', couch: 'break', arcade: 'break', nap_pod: 'break', plant: 'break',
+    whiteboard: 'researcher', rig: 'engineer', workstation: 'engineer', server: 'engineer', rack: 'engineer', superpod: 'engineer', wafer: 'engineer',
+  };
+  const WALK_SPEED = 1.6; // tiles per second
+  const quips = () => AIT.FLAVOR.QUIPS;
+  const pickOne = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  function shirtOf(p) {
+    return p.founder ? '#ef5f24' : D.ROLES[p.role].color;
+  }
+
+  function findPath(N, blocked, start, goals) {
+    const key = (x, y) => x + ',' + y;
+    const prev = new Map([[key(start[0], start[1]), null]]);
+    const q = [start];
+    while (q.length) {
+      const cur = q.shift();
+      if (goals.has(key(cur[0], cur[1]))) {
+        const path = [];
+        for (let c = cur; c; c = prev.get(key(c[0], c[1]))) path.unshift(c);
+        return path;
+      }
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cur[0] + dx, ny = cur[1] + dy, k = key(nx, ny);
+        if (nx < 0 || ny < 0 || nx >= N || ny >= N || prev.has(k) || blocked.has(k)) continue;
+        prev.set(k, cur);
+        q.push([nx, ny]);
+      }
+    }
+    return null;
+  }
+
+  const freeNeighbors = (N, blocked, x, y) =>
+    [[x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]].filter(([a, b]) => a >= 0 && b >= 0 && a < N && b < N && !blocked.has(a + ',' + b));
+
+  function startWalk(s, N, desk, p) {
+    const blocked = new Set(s.items.map((i) => i.x + ',' + i.y));
+    const home = freeNeighbors(N, blocked, desk.x, desk.y)[0];
+    if (!home) return;
+    const want = p.founder ? 'break' : p.role;
+    const spots = s.items.filter((i) => HANGOUT[i.type] === 'break' || HANGOUT[i.type] === want);
+    if (!spots.length) return;
+    const target = pickOne(spots);
+    const goals = new Set(freeNeighbors(N, blocked, target.x, target.y).map(([a, b]) => a + ',' + b));
+    if (!goals.size) return;
+    const path = findPath(N, blocked, home, goals);
+    if (!path) return;
+    const seat = [desk.x + 0.5, desk.y + 0.12];
+    const pts = [seat].concat(path.map(([a, b]) => [a + 0.5, b + 0.5]));
+    const say = HANGOUT[target.type] === 'break' ? pickOne(quips().break) : pickOne(quips()[want] || quips().break);
+    life.walkers.set(p.id, { id: p.id, deskId: desk.id, shirt: shirtOf(p), pts, seg: 0, k: 0, phase: 'out', hang: 0, say });
+  }
+
+  function walkerPos(w) {
+    const a = w.pts[w.seg], b = w.pts[Math.min(w.seg + 1, w.pts.length - 1)];
+    return [a[0] + (b[0] - a[0]) * w.k, a[1] + (b[1] - a[1]) * w.k];
+  }
+
+  function updateLife(t, dt, s, v, running, N, desks, deskStaff) {
+    if (life.wantCelebrate) {
+      life.wantCelebrate = false;
+      life.celebrateUntil = t + 2.4;
+      spawnConfetti(N);
+      const people = s.staff.slice().sort(() => Math.random() - 0.5).slice(0, 2);
+      people.forEach((p, i) => life.bubbles.push({ who: p.id, text: pickOne(quips().celebrate), until: t + 2.6 + i * 0.4 }));
+    }
+    // drop walkers whose desk or person is gone
+    for (const [id, w] of life.walkers) {
+      const d = desks.find((x) => x.id === w.deskId);
+      if (!d || !deskStaff.get(d.id) || deskStaff.get(d.id).id !== id) life.walkers.delete(id);
+    }
+    if (!running) return;
+    for (const w of life.walkers.values()) {
+      if (w.phase === 'hang') {
+        w.hang -= dt;
+        if (w.hang <= 0) {
+          w.pts = w.pts.slice().reverse();
+          w.seg = 0;
+          w.k = 0;
+          w.phase = 'back';
+        }
+        continue;
+      }
+      const a = w.pts[w.seg], b = w.pts[w.seg + 1];
+      if (!b) {
+        if (w.phase === 'out') {
+          w.phase = 'hang';
+          w.hang = 2.5 + Math.random() * 2.5;
+          life.bubbles.push({ who: w.id, text: w.say, until: t + 2.6 });
+        } else life.walkers.delete(w.id);
+        continue;
+      }
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 0.01;
+      w.k += (WALK_SPEED * dt) / len;
+      while (w.k >= 1 && w.pts[w.seg + 1]) {
+        w.k -= 1;
+        w.seg++;
+        if (!w.pts[w.seg + 1]) {
+          w.k = 0;
+          break;
+        }
+      }
+    }
+    // somebody gets up now and then
+    life.nextWalk -= dt;
+    const seated = desks.filter((d) => deskStaff.get(d.id) && !life.walkers.has(deskStaff.get(d.id).id));
+    if (life.nextWalk <= 0 && seated.length && life.walkers.size < Math.max(1, Math.floor(s.staff.length / 4))) {
+      life.nextWalk = 3 + Math.random() * 5;
+      const d = pickOne(seated);
+      startWalk(s, N, d, deskStaff.get(d.id));
+    }
+    // and somebody says something
+    life.nextQuip -= dt;
+    if (life.nextQuip <= 0 && seated.length && life.bubbles.length < 2) {
+      life.nextQuip = 5 + Math.random() * 5;
+      const d = pickOne(seated);
+      life.bubbles.push({ who: deskStaff.get(d.id).id, text: chooseQuip(s, v, deskStaff.get(d.id)), until: t + 3.2 });
+    }
+  }
+
+  function chooseQuip(s, v, p) {
+    const Q = quips();
+    const pools = [p.founder ? Q.founder : Q[p.role], p.founder ? Q.founder : Q[p.role]];
+    if (v.thermal < 1) pools.push(Q.hot, Q.hot, Q.hot);
+    if (s.cash < 0) pools.push(Q.broke, Q.broke, Q.broke);
+    if (v.flagship && v.service < 0.85) pools.push(Q.capacity, Q.capacity);
+    if (s.training) pools.push(Q.training, Q.training);
+    if (!s.models.length) pools.push(Q.nomodel);
+    if (v.flagship) pools.push(Q.live);
+    if (v.flagship && v.topRival) pools.push(v.flagship.cap > v.topRival.cap ? Q.ahead : Q.behind);
+    return pickOne(pickOne(pools));
+  }
+
+  function drawWalker(w, t) {
+    const [wx, wy] = walkerPos(w);
+    const [x, y] = P(0, 0, wx, wy, 0);
+    const moving = w.phase !== 'hang';
+    const stride = moving ? Math.sin(t * 12 + hash(w.id) * 6) : 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.13)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 7, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2d3440';
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - 2.2, y - 9);
+    ctx.lineTo(x - 2.2 - stride * 2.6, y - 1);
+    ctx.moveTo(x + 2.2, y - 9);
+    ctx.lineTo(x + 2.2 + stride * 2.6, y - 1);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'butt';
+    person(x, y - 7, w.shirt, w.id, t, false);
+  }
+
+  function headOf(id, desks, deskStaff) {
+    const w = life.walkers.get(id);
+    if (w) {
+      const [wx, wy] = walkerPos(w);
+      const [x, y] = P(0, 0, wx, wy, 0);
+      return [x, y - 40];
+    }
+    const d = desks.find((k) => deskStaff.get(k.id) && deskStaff.get(k.id).id === id);
+    if (!d) return null;
+    const [cx, cy] = tileCenter(d.x, d.y);
+    const [x, y] = P(cx, cy, -0.05, -0.38, 0);
+    return [x, y - 32];
+  }
+
+  function wrap(text, max) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (ctx.measureText(test).width > max && line) {
+        lines.push(line);
+        line = w;
+      } else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function drawBubbles(t, desks, deskStaff) {
+    life.bubbles = life.bubbles.filter((b) => b.until > t);
+    ctx.font = '700 11px "Atkinson Hyperlegible", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const b of life.bubbles) {
+      const at = headOf(b.who, desks, deskStaff);
+      if (!at) continue;
+      const lines = wrap(b.text, 130);
+      const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
+      const h = lines.length * 14 + 10;
+      const fade = Math.min(1, (b.until - t) * 3);
+      const [x, y] = at;
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(28,35,44,0.18)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x - w / 2, y - h - 7, w, h, 8);
+      else ctx.rect(x - w / 2, y - h - 7, w, h);
+      ctx.moveTo(x - 5, y - 7);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + 5, y - 7);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#1c232c';
+      lines.forEach((l, i) => ctx.fillText(l, x, y - h - 7 + 12 + i * 14));
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  const CONFETTI = ['#ef5f24', '#ffb000', '#2e9b67', '#4a63d8', '#d0469a', '#3fc6ff'];
+  function spawnConfetti(N) {
+    for (let i = 0; i < 90; i++) {
+      const [x, y] = P(0, 0, Math.random() * N, Math.random() * N, 0);
+      life.confetti.push({ x, y: y - 120 - Math.random() * 80, vx: (Math.random() - 0.5) * 40, vy: Math.random() * 30, r: Math.random() * 6, vr: (Math.random() - 0.5) * 10, c: pickOne(CONFETTI), life: 0, max: 2.2 + Math.random() });
+    }
+  }
+
+  function drawConfetti(t, dt) {
+    for (const c of life.confetti) {
+      c.life += dt;
+      c.vy += 160 * dt;
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+      c.r += c.vr * dt;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - c.life / c.max);
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.r);
+      ctx.fillStyle = c.c;
+      ctx.fillRect(-3, -1.5, 6, 3);
+      ctx.restore();
+    }
+    life.confetti = life.confetti.filter((c) => c.life < c.max);
+  }
+
+  R.lifeStats = () => ({ walkers: life.walkers.size, bubbles: life.bubbles.length });
+
+  R.celebrate = function () {
+    life.wantCelebrate = true;
+  };
+
   // ---------- office shell ----------
   function drawSlab(N, office) {
     const e = N;
@@ -664,11 +917,24 @@
     const mode = v.thermal < 0.8 ? 'hot' : s.training && v.trainPF > 0 ? 'train' : v.flagship ? 'serve' : 'idle';
     const info = { deskStaff, training: !!s.training, mode };
 
+    updateLife(t, dt, s, v, running, N, desks, deskStaff);
+    info.walking = new Set(life.walkers.keys());
     const list = ghost ? s.items.concat([ghost]) : s.items;
-    const sorted = list.slice().sort((a, b) => a.x + a.y - (b.x + b.y) || a.x - b.x);
+    const drawables = list.map((it) => ({ it, k: it.x + it.y + 1, kx: it.x }));
+    for (const w of life.walkers.values()) {
+      const [wx, wy] = walkerPos(w);
+      drawables.push({ w, k: wx + wy + 0.05, kx: wx });
+    }
+    drawables.sort((a, b) => a.k - b.k || a.kx - b.kx);
+    const sorted = drawables;
     const hot = v.thermal < 1;
     const brown = v.powerFactor < 1;
-    for (const it of sorted) {
+    for (const d of sorted) {
+      if (d.w) {
+        drawWalker(d.w, t);
+        continue;
+      }
+      const it = d.it;
       const [cx, cy] = tileCenter(it.x, it.y);
       const art = ART[it.type];
       if (!art) continue;
@@ -686,19 +952,8 @@
       }
     }
 
-    // ambient glyphs from staff at work
-    if (running) {
-      ambientT += dt;
-      if (ambientT > 0.9 && desks.length) {
-        ambientT = 0;
-        const d = desks[Math.floor(Math.random() * Math.min(desks.length, s.staff.length))];
-        const p = d && deskStaff.get(d.id);
-        if (p) {
-          const glyph = { researcher: '∑', engineer: '</>', growth: '+users', safety: '✓' }[p.role];
-          R.float(d.x, d.y, p.founder ? 'idea!' : glyph, p.founder ? '#ef5f24' : D.ROLES[p.role].color);
-        }
-      }
-    }
+    drawConfetti(t, dt);
+    drawBubbles(t, desks, deskStaff);
 
     for (const p of particles) {
       p.life += dt;
@@ -736,6 +991,49 @@
     iconCache[type] = c.toDataURL();
     ctx = prev;
     return iconCache[type];
+  };
+
+
+  // small picture of an office for chapter cards
+  const previewCache = {};
+  R.officePreview = function (level, company) {
+    const key = level + '|' + company;
+    if (previewCache[key]) return previewCache[key];
+    const office = D.OFFICES[level], N = office.size;
+    const PW = 440, PH = 220, S = 2;
+    const c = document.createElement('canvas');
+    c.width = PW * S;
+    c.height = PH * S;
+    const prev = ctx;
+    ctx = c.getContext('2d');
+    const z = Math.min(PW / (N * TW + 40), PH / (N * TH + WALL_H + SLAB + 30));
+    ctx.setTransform(S * z, 0, 0, S * z, (S * PW) / 2, S * (PH / 2 - ((N * TH) / 2) * z + ((WALL_H - SLAB) / 2) * z));
+    drawSlab(N, office);
+    drawFloor(N, office);
+    drawWalls(N, office, level, company, 1);
+    const sig = ['rig', 'workstation', 'server', 'rack', 'wafer'][level];
+    const props = [];
+    const roles = ['researcher', 'engineer', 'growth', 'safety'];
+    const staff = new Map();
+    for (let y = 1; y < Math.max(2, Math.floor(N / 2)); y += 1) for (let x = Math.ceil(N / 2); x < N - 1; x++) props.push({ id: props.length + 1, type: sig, x, y });
+    for (let y = Math.ceil(N / 2); y < N - 1; y += 2) {
+      for (let x = 1; x < Math.floor(N / 2); x += 2) {
+        const it = { id: 1000 + props.length, type: 'desk', x, y };
+        staff.set(it.id, { id: 'pv' + it.id, role: roles[props.length % 4] });
+        props.push(it);
+      }
+    }
+    props.push({ id: 5000, type: 'plant', x: 0, y: N - 1 });
+    if (level >= 1) props.push({ id: 5001, type: 'coffee', x: 0, y: Math.floor(N / 2) });
+    const info = { deskStaff: staff, training: false, mode: 'serve' };
+    props.sort((a, b) => a.x + a.y - (b.x + b.y) || a.x - b.x);
+    for (const it of props) {
+      const [cx, cy] = tileCenter(it.x, it.y);
+      ART[it.type](cx, cy, it, 1.2, info);
+    }
+    previewCache[key] = c.toDataURL();
+    ctx = prev;
+    return previewCache[key];
   };
 
   // ---------- input ----------

@@ -260,6 +260,7 @@
       role,
       skill,
       salary: salaryFor(role, skill, s.sentiment, s.day),
+      bio: AIT.FLAVOR ? AIT.FLAVOR.bio(role) : '',
     };
   }
 
@@ -322,7 +323,8 @@
       r.hype = Math.min(100, r.hype + 20);
       r.nextRelease = s.day + (def.open ? randi(50, 120) : randi(80, 170));
       const beat = v.flagship && r.cap > v.flagship.cap ? ' It beats your flagship.' : '';
-      news(s, `${def.name} releases ${def.model}-${r.version}, scoring ${r.cap.toFixed(1)} on OmniBench.${beat}`, beat ? 'warn' : 'info', !!beat);
+      const line = AIT.FLAVOR ? ' ' + AIT.FLAVOR.pick(AIT.FLAVOR.RIVAL_LINES[r.id]) : '';
+      news(s, `${def.name} releases ${def.model}-${r.version}, scoring ${r.cap.toFixed(1)} on OmniBench.${beat || line}`, beat ? 'warn' : 'info', !!beat);
       if (!def.open && r.cap >= 100) {
         endGame(s, false, `${def.name} announced AGI first. The race is over.`);
         return;
@@ -438,7 +440,8 @@
     };
     s.models.push(m);
     s.training = null;
-    news(s, `${m.name} finished training. OmniBench score: ${cap.toFixed(1)}.`, 'good', true);
+    s.reveal = m.id; // the UI shows a launch reveal for this model
+    news(s, `${m.name} finished training. OmniBench score: ${cap.toFixed(1)}.`, 'good');
     if (size.id === 'agi') {
       endGame(s, true, `${m.name} is the first artificial general intelligence. ${s.company} won the race.`);
     }
@@ -447,11 +450,12 @@
   // ---------- events ----------
 
   function maybeEvent(s, v) {
-    if (s.events.length || Math.random() > 1 / 18) return;
+    // a quiet first month and a half so new players can find their feet
+    if (s.day < 45 || s.events.length || Math.random() > 1 / 18) return;
     const pool = [];
     let total = 0;
     for (const ev of AIT.EVENTS) {
-      if ((s.eventCd[ev.id] || 0) > s.day) continue;
+      if ((s.eventCd[ev.id] || 0) > s.day || (ev.modal && s.day < 75)) continue;
       const w = ev.weight(s, v);
       if (w > 0) {
         pool.push([ev, w]);
@@ -665,7 +669,7 @@
       s.cash -= c.salary;
       s.month.salaries += c.salary;
       s.candidates = s.candidates.filter((x) => x !== c);
-      s.staff.push({ id: 's' + s.nextId++, name: c.name, role: c.role, skill: c.skill, salary: c.salary, morale: 70, trainUntil: 0, perk: 0 });
+      s.staff.push({ id: 's' + s.nextId++, name: c.name, role: c.role, skill: c.skill, salary: c.salary, bio: c.bio || '', morale: 70, trainUntil: 0, perk: 0 });
       return ok(`${c.name} joined as ${D.ROLES[c.role].name}`);
     },
 
@@ -794,6 +798,7 @@
 
     campaign(s, id) {
       const c = D.CAMPAIGNS.find((x) => x.id === id);
+      if ((c.minOffice || 0) > s.officeLevel) return no(`Needs ${D.OFFICES[c.minOffice].name}`);
       if ((s.campaignCd[id] || 0) > s.day) return no('On cooldown');
       if (s.cash < c.cost) return no('Not enough cash');
       s.cash -= c.cost;

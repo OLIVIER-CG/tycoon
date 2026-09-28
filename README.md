@@ -29,6 +29,22 @@ Progress saves automatically to your browser every in-game month.
 | **Fund** | Eight funding rounds from Pre-seed to IPO. Each bigger office requires a funding round, and each round needs traction. |
 | **Survive** | Random events: GPU shortages, jailbreak scandals, copyright lawsuits, poaching, Senate hearings, enterprise deals, heatwaves and bubble talk. |
 
+**Pacing.** The game starts with two tabs, two stats and two items. Tabs,
+stats, build categories, research tiers, model sizes and funding rounds appear
+as you earn them, with a dot on anything new. The shop only teases the next
+thing you can unlock instead of listing everything. There are no random events
+for the first 45 days. The story runs in six chapters (The Garage, First
+Believers, Downtown, The Scale-up, Big Tech Energy, The Last Mile), and each
+opens with a title card.
+
+**Personality.** Staff have short bios. They talk in speech bubbles about what
+is actually happening (training, overheating, a rival release, running out of
+money) and get up to visit the coffee machine, couch, whiteboard or servers.
+Every finished model gets a launch reveal: the score counts up, you see where
+it lands on the leaderboard, and fictional users post about it. Big moments set
+off confetti and a cheer. Rival releases come with press lines, and small
+synthesized sound effects can be muted from the top bar.
+
 **Mentor.** Mira Castell, a founder who has built two labs, walks you through
 an 11-step tutorial: place rigs, watch the heat, train, deploy, raise money and
 hire. The game pauses while she talks, and each task finishes the moment you do
@@ -51,10 +67,13 @@ Scroll or pinch to zoom, drag to pan, right-click to stop placing.
 index.html        page shell
 css/style.css     all styling
 js/data.js        content and tuning: offices, items, roles, research, models, rivals, rounds, goals
+js/flavor.js      chapters, staff bios, office chatter, launch reactions, rival press lines
+js/progress.js    what is unlocked when: tabs, stats, build categories, chapters
 js/events.js      random events and decisions
 js/sim.js         game state, daily simulation and player actions (no DOM, runs in Node)
-js/render.js      isometric canvas renderer and input
-js/ui.js          HUD, panels, modals and toasts
+js/render.js      isometric renderer, walking staff, speech bubbles, confetti and input
+js/sound.js       synthesized sound effects
+js/ui.js          HUD, panels, modals, launch reveals, chapter cards and toasts
 js/mentor.js      mentor dialogue: tutorial steps and one-off tips
 js/main.js        boot, save/load and the main loop
 tools/simulate.js headless balance checker

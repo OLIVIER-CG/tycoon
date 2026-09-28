@@ -139,9 +139,9 @@
   const CAMPAIGNS = [
     { id: 'thread', name: 'Cryptic Hype Thread', cost: 0, hype: 3, cd: 12, desc: 'Post "feel the scaling" at 2am and let people guess.' },
     { id: 'influencer', name: 'Tech Influencer Tour', cost: 25000, hype: 7, cd: 20, desc: 'Ship early access to people with ring lights.' },
-    { id: 'launch', name: 'Launch Livestream', cost: 400000, hype: 12, cd: 30, desc: 'A live demo. Stronger within 30 days of a deploy.', deployBoost: true },
-    { id: 'keynote', name: 'Conference Keynote', cost: 3e6, hype: 18, cd: 45, desc: 'Black turtleneck, one slide, standing ovation.' },
-    { id: 'bigad', name: 'Big Game TV Ad', cost: 20e6, hype: 28, cd: 120, desc: 'Sixty seconds in front of a hundred million people.' },
+    { id: 'launch', name: 'Launch Livestream', minOffice: 1, cost: 400000, hype: 12, cd: 30, desc: 'A live demo. Stronger within 30 days of a deploy.', deployBoost: true },
+    { id: 'keynote', name: 'Conference Keynote', minOffice: 2, cost: 3e6, hype: 18, cd: 45, desc: 'Black turtleneck, one slide, standing ovation.' },
+    { id: 'bigad', name: 'Big Game TV Ad', minOffice: 3, cost: 20e6, hype: 28, cd: 120, desc: 'Sixty seconds in front of a hundred million people.' },
   ];
 
   // Funding rounds, raised in order. dil is the target dilution; min is the floor raise.

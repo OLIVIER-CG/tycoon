@@ -1,7 +1,8 @@
 /* DOM user interface: HUD, side panel tabs, modals, toasts and the inspector. */
 (function (root) {
   const AIT = (root.AIT = root.AIT || {});
-  const D = AIT.DATA, Sim = AIT.Sim, A = Sim.actions;
+  const D = AIT.DATA, Sim = AIT.Sim, A = Sim.actions, Progress = AIT.Progress, F = AIT.FLAVOR;
+  const sfx = (name) => AIT.Sound && AIT.Sound.play(name);
 
   // ---------- formatting ----------
   const scaled = (a, units, suffixFirst) => {
@@ -56,8 +57,10 @@
     modal: null,
     overShown: false,
     placeWarnAt: 0,
+    chapters: [],
   };
   const $ = (id) => document.getElementById(id);
+  const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const G = () => AIT.game;
 
   // ---------- toasts ----------
@@ -65,6 +68,8 @@
     const box = $('toasts');
     if (!box) return;
     ui.lastPanel = 0; // something happened; refresh the panel on the next frame
+    if (kind === 'unlock' || kind === 'goal') sfx('unlock');
+    else if (kind === 'bad') sfx('error');
     const el = document.createElement('div');
     el.className = 'toast ' + kind;
     el.textContent = text;
@@ -123,8 +128,8 @@
 
   function renderBuild(s, v) {
     const o = v.office, next = D.OFFICES[s.officeLevel + 1];
-    let nextHtml = '<p class="muted small">You own the biggest campus there is.</p>';
-    if (next) {
+    let nextHtml = next ? '' : '<p class="muted small">You own the biggest campus there is.</p>';
+    if (next && Progress.has(s, 'office:next')) {
       const round = next.round && D.ROUNDS.find((r) => r.id === next.round);
       const gated = round && !s.rounds.includes(next.round);
       nextHtml = `
@@ -135,18 +140,23 @@
           ${gated ? `<p class="lock-note">Requires your ${round.name}</p>` : `<button class="btn primary wide" data-act="move"${disabled(s.cash < next.moveCost)}>Move for ${money(next.moveCost)}</button>`}
         </div>`;
     }
-    const items = Object.entries(D.ITEMS).filter(([, d]) => d.cat === ui.buildCat);
+    const cats = D.ITEM_CATS.filter((c) => Progress.has(s, 'cat:' + c.id));
+    if (!cats.some((c) => c.id === ui.buildCat)) ui.buildCat = 'compute';
+    // show what you can buy, plus one teaser of what comes next
+    const all = Object.entries(D.ITEMS).filter(([, d]) => d.cat === ui.buildCat);
+    const locked = all.filter(([t]) => Sim.itemLocked(s, t));
+    const items = all.filter(([t]) => !Sim.itemLocked(s, t) || t === (locked[0] && locked[0][0]));
     const tool = AIT.Render.tool;
     return `
       <section class="card">
         <div class="row between"><div><div class="eyebrow">Your office</div><h3>${o.name}</h3></div><span class="tag mono">${o.size}×${o.size}</span></div>
         ${meter('Power draw', v.power, v.powerCap, fmt.kw)}
         ${meter('Heat vs cooling', v.heat, v.cooling, fmt.kw, 0.85, 'heat')}
-        ${meter('Desks used', s.staff.length, v.seats, (n) => n, 1.01)}
+        ${Progress.has(s, 'cat:office') ? meter('Desks used', s.staff.length, v.seats, (n) => n, 1.01) : ''}
         <p class="small muted">Compute ${fmt.pf(v.effPF)} usable of ${fmt.pf(v.pf)} · rent ${money(o.rent)}/mo · power bill ${money(v.powerCostDay * 30)}/mo</p>
         ${nextHtml}
       </section>
-      <div class="chips" role="group" aria-label="Item category">${D.ITEM_CATS.map((c) => `<button class="chip${ui.buildCat === c.id ? ' on' : ''}" data-act="cat" data-id="${c.id}">${c.name}</button>`).join('')}</div>
+      <div class="chips" role="group" aria-label="Item category">${cats.map((c) => `<button class="chip${ui.buildCat === c.id ? ' on' : ''}" data-act="cat" data-id="${c.id}">${c.name}</button>`).join('')}</div>
       <div class="items">
         ${items
           .map(([type, d]) => {
@@ -154,6 +164,7 @@
             const cost = Sim.itemCost(s, type);
             const sel = tool && tool.mode === 'place' && tool.type === type;
             return `<button class="item${sel ? ' on' : ''}${lock ? ' locked' : ''}" data-act="tool" data-id="${type}" title="${esc(d.desc)}">
+              ${lock ? '<span class="item-next">Next</span>' : ''}
               <img src="${AIT.Render.icon(type)}" alt="" width="56" height="56">
               <span class="item-name">${d.name}</span>
               <span class="item-stat mono">${statLine(d)}</span>
@@ -166,7 +177,7 @@
         <button class="btn${tool && tool.mode === 'sell' ? ' danger' : ''}" data-act="sellmode">${tool && tool.mode === 'sell' ? 'Selling: tap items' : 'Sell items (50% back)'}</button>
         ${tool ? '<button class="btn ghost" data-act="notool">Done</button>' : ''}
       </div>
-      <p class="small muted">Tap an item, then tap free tiles to place it. Drag to place several on desktop. ${Object.keys(D.ITEMS).some((t) => Sim.itemCost(s, t) !== D.ITEMS[t].cost) ? '* Hardware prices are affected by the market right now.' : ''}</p>`;
+      <p class="small muted">${locked.length > 1 ? `${locked.length - 1} more to discover as you grow. ` : ''}${Object.keys(D.ITEMS).some((t) => Sim.itemCost(s, t) !== D.ITEMS[t].cost) ? '* Hardware prices are moving with the market right now.' : ''}</p>`;
   }
 
   function renderTeam(s, v) {
@@ -184,6 +195,7 @@
           <div class="grow">
             <div class="name">${esc(p.name)}${p.founder ? ' <span class="tag">Founder</span>' : ''}</div>
             <div class="sub mono">skill ${p.skill}/10 · ${p.founder ? 'no salary' : money(p.salary) + '/mo'}${training ? ` · training ${p.trainUntil - s.day}d` : ''}</div>
+            ${p.founder ? '<div class="bio">Started this in a garage.</div>' : p.bio ? `<div class="bio">${esc(p.bio)}</div>` : ''}
             <div class="mood" title="Morale ${Math.round(p.morale)}%">${bar(p.morale / 100, p.morale < 35 ? 'bad' : p.morale < 55 ? 'warn' : 'ok')}</div>
           </div>
           <div class="actions">
@@ -201,6 +213,7 @@
           <div class="grow">
             <div class="name">${esc(c.name)}${c.star ? ' <span class="tag hot">Star</span>' : ''}</div>
             <div class="sub mono">${r.name} · skill ${c.skill}/10 · ${money(c.salary)}/mo</div>
+            ${c.bio ? `<div class="bio">${esc(c.bio)}</div>` : ''}
           </div>
           <div class="actions"><button class="btn small primary" data-act="hire" data-id="${c.id}"${disabled(free <= 0 || s.cash < c.salary)}>Hire</button></div>
         </div>`;
@@ -227,7 +240,10 @@
   }
 
   function renderResearch(s, v) {
-    const tiers = [1, 2, 3, 4, 5];
+    const reachable = D.TECHS.filter((t) => s.techs[t.id] || t.req.every((r) => s.techs[r]));
+    const maxTier = Math.max(1, ...reachable.map((t) => t.tier));
+    const tiers = [1, 2, 3, 4, 5].filter((t) => t <= maxTier);
+    const hidden = D.TECHS.filter((t) => t.tier > maxTier).length;
     const names = { 1: 'Tier 1 · Foundations', 2: 'Tier 2 · Scaling up', 3: 'Tier 3 · Serious lab', 4: 'Tier 4 · Frontier', 5: 'Tier 5 · The endgame' };
     return `
       <section class="card rp-card">
@@ -251,7 +267,8 @@
             })
             .join('')}</div>`,
         )
-        .join('')}`;
+        .join('')}
+      ${hidden ? `<p class="small muted">${hidden} more technologies are waiting further down the road.</p>` : ''}`;
   }
 
   function trainRate(s, v) {
@@ -260,15 +277,23 @@
     return pf * v.trainMult;
   }
 
+  // data sources the player has ticked and actually unlocked
+  function cleanData(s) {
+    const d = {};
+    for (const src of D.DATA_SOURCES) d[src.id] = !!ui.train.data[src.id] && (!src.tech || !!s.techs[src.tech]);
+    return d;
+  }
+
   function renderModels(s, v) {
     const unlocked = D.MODEL_SIZES.filter((m) => !m.tech || s.techs[m.tech]);
+    const nextSize = D.MODEL_SIZES.find((m) => m.tech && !s.techs[m.tech]);
     if (!ui.train.size || !unlocked.some((m) => m.id === ui.train.size)) ui.train.size = unlocked[unlocked.length - 1].id;
     const size = D.SIZE_BY_ID[ui.train.size];
     const rate = trainRate(s, v);
     const top = v.topRival;
     const fm = v.flagship;
 
-    const alloc = `
+    const alloc = !fm ? '' : `
       <section class="card">
         <div class="row between"><div><div class="eyebrow">Compute split</div><h3 class="mono">${fmt.pf(v.effPF)}</h3></div>
           <div class="seg" role="group" aria-label="Allocation mode"><button class="${s.autoAlloc ? 'on' : ''}" data-act="alloc-auto">Auto</button><button class="${s.autoAlloc ? '' : 'on'}" data-act="alloc-manual">Manual</button></div></div>
@@ -295,18 +320,19 @@
           <div class="row gap">${confirmBtn('cancel-train', 'Cancel run', 'Confirm: lose progress', 'small ghost')}</div>
         </section>`;
     } else {
-      const cost = Sim.trainingCost(s, size.id, ui.train.data);
-      const exp = Sim.expectedCap(s, size.id, size.id === 'agi' ? {} : ui.train.data, v);
+      const data = cleanData(s);
+      const cost = Sim.trainingCost(s, size.id, data);
+      const exp = Sim.expectedCap(s, size.id, size.id === 'agi' ? {} : data, v);
       const days = rate > 0 ? Math.ceil(size.pfdays / rate) : Infinity;
       job = `
         <section class="card">
           <div class="eyebrow">New training run</div>
-          <div class="sizes">${D.MODEL_SIZES.map((m) => {
+          <div class="sizes">${D.MODEL_SIZES.filter((m) => !m.tech || s.techs[m.tech] || m === nextSize).map((m) => {
             const locked = m.tech && !s.techs[m.tech];
             return `<button class="size${m.id === size.id ? ' on' : ''}${locked ? ' locked' : ''}" data-act="pick-size" data-id="${m.id}"${disabled(locked)}>
               <b>${m.name}</b><span class="mono small">${m.params}</span><span class="small muted">${locked ? D.TECH_BY_ID[m.tech].name : fmt.pfdays(m.pfdays)}</span></button>`;
           }).join('')}</div>
-          ${size.id === 'agi' ? `<p class="small">The AGI Project uses every data source there is. Budget: ${money(size.fixedCost)}.</p>` : `<div class="datas">${D.DATA_SOURCES.map((src) => {
+          ${size.id === 'agi' ? `<p class="small">The AGI Project uses every data source there is. Budget: ${money(size.fixedCost)}.</p>` : `<div class="datas">${D.DATA_SOURCES.filter((src) => !src.tech || s.techs[src.tech]).map((src) => {
             const locked = src.tech && !s.techs[src.tech];
             const on = ui.train.data[src.id] && !locked;
             return `<button class="data${on ? ' on' : ''}${locked ? ' locked' : ''}" data-act="pick-data" data-id="${src.id}"${disabled(locked)} aria-pressed="${on}">
@@ -345,7 +371,8 @@
 
   function renderMarket(s, v) {
     const fm = v.flagship;
-    const camp = D.CAMPAIGNS.map((c) => {
+    const lockedCamps = D.CAMPAIGNS.filter((c) => (c.minOffice || 0) > s.officeLevel).length;
+    const camp = D.CAMPAIGNS.filter((c) => (c.minOffice || 0) <= s.officeLevel).map((c) => {
       const cd = (s.campaignCd[c.id] || 0) - s.day;
       return `<div class="campaign">
         <div class="grow"><div class="name">${c.name}</div><div class="small muted">${c.desc}</div><div class="small mono">+${c.hype} hype · cooldown ${c.cd}d</div></div>
@@ -379,15 +406,17 @@
       </section>
       <h3 class="section-title">Marketing</h3>
       <div class="list">${camp}</div>
-      <h3 class="section-title">Enterprise contracts</h3>
-      <div class="list">${contracts || '<p class="small muted">No contracts yet. Companies will reach out once your model can write code or is good enough.</p>'}</div>`;
+      ${lockedCamps ? `<p class="small muted">Bigger campaigns open up as your office grows (${lockedCamps} more).</p>` : ''}
+      ${s.contracts.length || s.officeLevel >= 2 || s.techs.code_models ? `<h3 class="section-title">Enterprise contracts</h3>
+      <div class="list">${contracts || '<p class="small muted">No contracts yet. Companies will reach out once your model can write code or is good enough.</p>'}</div>` : ''}`;
   }
 
   function renderFinance(s, v) {
     const last = s.history[s.history.length - 1];
     const hist = s.history.slice(-24);
     const next = D.ROUNDS[s.rounds.length];
-    const rounds = D.ROUNDS.map((r, i) => {
+    const laterRounds = Math.max(0, D.ROUNDS.length - s.rounds.length - 1);
+    const rounds = D.ROUNDS.slice(0, s.rounds.length + 1).map((r, i) => {
       const done = s.rounds.includes(r.id);
       const isNext = i === s.rounds.length;
       const met = isNext && r.req(s, v);
@@ -434,7 +463,7 @@
       </section>
       <h3 class="section-title">Funding</h3>
       <div class="list rounds">${rounds}</div>
-      ${next ? '' : '<p class="small muted">You are a public company. Keep growing.</p>'}
+      ${next ? (laterRounds ? `<p class="small muted">${laterRounds} more rounds after this one, all the way to an IPO.</p>` : '') : '<p class="small muted">You are a public company. Keep growing.</p>'}
       <h3 class="section-title">Last month</h3>
       <section class="card">${pl}</section>`;
   }
@@ -480,6 +509,8 @@
     };
     set('co-name', esc(s.company));
     set('date', fmt.date(s.day));
+    for (const k of ['cash', 'subs', 'compute', 'hype', 'bench', 'val']) $('hud-' + k).hidden = !Progress.has(s, 'hud:' + k);
+    renderTabs(s);
     const perDay = v.profitMonth / 30;
     set('hud-cash', `<span class="k">Cash</span><span class="v mono${s.cash < 0 ? ' bad-text' : ''}">${money(s.cash)}</span><span class="d mono ${perDay >= 0 ? 'ok-text' : 'bad-text'}">${perDay >= 0 ? '+' : ''}${money(perDay)}/day</span>`);
     set('hud-subs', `<span class="k">Subscribers</span><span class="v mono">${fmt.num(s.subs)}</span><span class="d mono">${fmt.pct(s.share, 1)} share</span>`);
@@ -498,7 +529,6 @@
     if (s.offer) alerts.push(['good', `${s.offer.name} term sheet is waiting.`, 'finance']);
     if (!s.training && !s.models.length) alerts.push(['info', 'Start your first training run.', 'models']);
     else if (!v.flagship && s.models.length) alerts.push(['info', 'You have a model. Deploy it to get users.', 'models']);
-    else if (!s.training && s.models.length) alerts.push(['info', 'No training run in progress.', 'models']);
     const nextRound = D.ROUNDS[s.rounds.length];
     if (nextRound && !s.offer && s.roundCd <= s.day && nextRound.req(s, v)) alerts.push(['good', `Investors will take your ${nextRound.name} pitch.`, 'finance']);
     // during the tutorial Mira is the guide, so only real problems show here
@@ -552,16 +582,30 @@
     box.hidden = false;
   }
 
+  function renderTabs(s) {
+    if (!Progress.has(s, 'tab:' + ui.tab)) ui.tab = 'build';
+    const html = Object.entries(TABS)
+      .filter(([id]) => Progress.has(s, 'tab:' + id))
+      .map(([id, t]) => `<button role="tab" data-tab="${id}" aria-selected="${id === ui.tab}">${t.name}${Progress.isNewTab(s, id) ? '<span class="new-dot" title="New"></span>' : ''}</button>`)
+      .join('');
+    const el = $('tabs');
+    if (el.dataset.html !== html) {
+      el.innerHTML = html;
+      el.dataset.html = html;
+    }
+  }
+
   function renderPanel(force) {
     const g = G();
     if (!force && ui.interacting) return;
+    Progress.ensure(g.s, Sim.derive(g.s));
+    renderTabs(g.s);
     const v = Sim.derive(g.s);
     const html = TABS[ui.tab].render(g.s, v);
     if (html !== ui.lastHtml) {
       $('tab-body').innerHTML = html;
       ui.lastHtml = html;
     }
-    document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === ui.tab)));
   }
 
   // ---------- modals ----------
@@ -624,17 +668,86 @@
     <p class="small muted">Keys: Space pauses, 1–3 set speed, Esc cancels placing. Right-click also cancels. Scroll or pinch to zoom, drag to pan.</p>`;
 
   function showNewGame(canContinue) {
+    const ch = F.CHAPTERS[0];
     openModal(
-      `<div class="eyebrow">A new AI lab</div>
-      <h2>Found your company</h2>
-      <p>It's January 2023 and everyone is talking about chatbots. You have a garage, one gaming PC and $75,000. Build the lab that gets to AGI first.</p>
-      <p class="small muted">Your mentor, Mira, will walk you through the basics once you start.</p>
-      <div class="field"><label for="ng-company">Company name</label><input id="ng-company" maxlength="24" value="Nimbus Labs" autocomplete="off"></div>
-      <div class="field"><label for="ng-family">Model name</label><input id="ng-family" maxlength="12" value="Nova" autocomplete="off"></div>
-      <div class="row gap">${canContinue ? '<button class="btn" data-modal="close">Back to my game</button>' : ''}<button class="btn primary" data-modal="start">Start the company</button></div>`,
-      'intro',
+      `<div class="chapter-art"><img src="${AIT.Render.officePreview(0, 'Your lab')}" alt=""></div>
+      <div class="eyebrow">Chapter ${ch.num}</div>
+      <h2 class="chapter-title">${ch.title}</h2>
+      <p>${ch.text}</p>
+      <div class="field"><label for="ng-company">Name your company</label><input id="ng-company" maxlength="24" value="Nimbus Labs" autocomplete="off"></div>
+      <div class="field"><label for="ng-family">Name your models</label><input id="ng-family" maxlength="12" value="Nova" autocomplete="off"></div>
+      <p class="small muted">Your mentor, Mira, will show you around once you start.</p>
+      <div class="row gap">${canContinue ? '<button class="btn" data-modal="close">Back to my game</button>' : ''}<button class="btn primary" data-modal="start">Open the garage</button></div>`,
+      'intro chapter',
       canContinue,
     );
+  }
+
+  function showChapter(s, ch) {
+    openModal(
+      `<div class="chapter-art"><img src="${AIT.Render.officePreview(s.officeLevel, s.company)}" alt=""></div>
+      <div class="eyebrow">Chapter ${ch.num} of ${F.CHAPTERS.length}</div>
+      <h2 class="chapter-title">${ch.title}</h2>
+      <p>${ch.text}</p>
+      <div class="eyebrow">What's new</div>
+      <ul class="chapter-new">${ch.news.map((n) => `<li>${n}</li>`).join('')}</ul>
+      <div class="row gap"><button class="btn primary" data-modal="close">Let's go</button></div>`,
+      'chapter',
+      false,
+    );
+    sfx('chapter');
+    AIT.Render.celebrate();
+  }
+
+  // The moment a model finishes: the score counts up, the leaderboard shows
+  // where it lands, and the internet has opinions.
+  function showReveal(s, m) {
+    const v = Sim.derive(s);
+    const rivals = s.rivals.map((r) => ({ name: Sim.RIVAL_BY_ID[r.id].name, cap: r.cap, color: Sim.RIVAL_BY_ID[r.id].color }));
+    const top = rivals.reduce((a, r) => (r.cap > a.cap ? r : a), rivals[0]);
+    const rows = rivals.concat([{ name: s.company, cap: m.cap, color: 'var(--accent)', you: true }]).sort((a, b) => b.cap - a.cap);
+    const rank = rows.findIndex((r) => r.you) + 1;
+    const ratio = m.cap / top.cap;
+    const tier = m.cap > top.cap ? 'sota' : ratio >= 0.9 ? 'close' : ratio >= 0.6 ? 'mid' : 'low';
+    const verdict = {
+      sota: 'New state of the art. You are number one.',
+      close: 'Within striking distance of the leaders.',
+      mid: 'A solid model. The big labs are still ahead.',
+      low: "Small, but it's yours. Everyone starts somewhere.",
+    }[tier];
+    const fm = v.flagship;
+    const better = !fm || m.cap > fm.cap;
+    const short = m.name.split(' ')[0];
+    const pool = F.REACTIONS[tier].slice().sort(() => Math.random() - 0.5).slice(0, 2);
+    const reacts = pool.map(([h, t]) => [h, t.replace(/{m}/g, short).replace(/{c}/g, s.company).replace(/{r}/g, top.name)]);
+    openModal(
+      `<div class="eyebrow">Training complete · ${fmt.date(s.day)}</div>
+      <h2>${esc(m.name)}</h2>
+      <div class="reveal-score"><span class="reveal-num mono" data-to="${m.cap}">0.0</span><span class="reveal-unit">OmniBench<br><b class="mono">#${rank} of ${rows.length}</b></span></div>
+      <p class="reveal-verdict ${tier}">${verdict}${!better ? ` It does not beat ${esc(fm.name)} (${fm.cap.toFixed(1)}).` : ''}</p>
+      <div class="reveal-board">${rows
+        .map((r) => `<div class="rb${r.you ? ' you' : ''}"><span class="rb-name">${esc(r.name)}</span><span class="rb-bar"><i style="width:${r.cap}%;background:${r.color}"></i></span><span class="mono small">${r.cap.toFixed(1)}</span></div>`)
+        .join('')}</div>
+      <div class="reactions">${reacts.map(([h, t]) => `<div class="post"><span class="post-handle mono">${esc(h)}</span><span>${esc(t)}</span></div>`).join('')}</div>
+      <div class="row gap">${
+        better
+          ? `<button class="btn primary" data-modal="reveal-deploy" data-id="${m.id}">Deploy ${esc(short)}</button><button class="btn ghost" data-modal="close">Not now</button>`
+          : `<button class="btn primary" data-modal="close">Keep ${esc(fm.name.split(' ')[0])}</button><button class="btn ghost" data-modal="reveal-deploy" data-id="${m.id}">Deploy anyway</button>`
+      }</div>`,
+      'reveal ' + tier,
+      false,
+    );
+    const num = document.querySelector('.reveal-num');
+    const to = m.cap, t0 = performance.now(), dur = reducedMotion() ? 0 : 1400;
+    const step = (now) => {
+      const k = dur ? Math.min(1, (now - t0) / dur) : 1;
+      const eased = 1 - Math.pow(1 - k, 3);
+      if (num.isConnected) num.textContent = (to * eased).toFixed(1);
+      if (k < 1 && num.isConnected) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    sfx('fanfare');
+    if (better) AIT.Render.celebrate();
   }
 
   function showMenu() {
@@ -680,7 +793,7 @@
         if (result(A.moveOffice(s), false)) AIT.Render.fit(D.OFFICES[s.officeLevel].size);
         break;
       case 'hire':
-        result(A.hire(s, id));
+        if (result(A.hire(s, id))) sfx('blip');
         break;
       case 'train':
         result(A.train(s, id));
@@ -689,7 +802,7 @@
         result(A.refreshCandidates(s));
         break;
       case 'research':
-        result(A.research(s, id), false);
+        if (result(A.research(s, id), false)) sfx('unlock');
         break;
       case 'pick-size':
         ui.train.size = id;
@@ -701,7 +814,7 @@
         result(A.startTraining(s, ui.train.size, ui.train.data));
         break;
       case 'deploy':
-        result(A.deploy(s, id));
+        if (result(A.deploy(s, id))) sfx('coin');
         break;
       case 'alloc-auto':
         A.setAlloc(s, true);
@@ -716,7 +829,10 @@
         result(A.pitch(s));
         break;
       case 'accept':
-        result(A.acceptOffer(s), false);
+        if (result(A.acceptOffer(s), false)) {
+          sfx('coin');
+          AIT.Render.celebrate();
+        }
         break;
       case 'decline':
         result(A.declineOffer(s));
@@ -761,6 +877,7 @@
   function goTo(target) {
     const [tab, cat] = target.split(':');
     ui.tab = tab;
+    Progress.seeTab(G().s, tab);
     if (cat) ui.buildCat = cat;
     renderPanel(true);
     const panel = $('panel');
@@ -776,6 +893,7 @@
       const r = A.place(s, tool.type, x, y);
       if (r.ok) {
         AIT.Render.float(x, y, '-' + money(r.msg), '#cf3f35');
+        sfx('place');
         renderPanel(true);
       } else if (r.msg !== 'That tile is taken' && r.msg !== 'Outside the office') {
         const now = performance.now();
@@ -790,8 +908,10 @@
       const it = s.items.find((i) => i.x === x && i.y === y);
       if (!it) return;
       const r = A.sell(s, it.id);
-      if (r.ok) AIT.Render.float(x, y, '+' + money(r.msg), '#248a5a');
-      else toast(r.msg, 'warn');
+      if (r.ok) {
+        AIT.Render.float(x, y, '+' + money(r.msg), '#248a5a');
+        sfx('sell');
+      } else toast(r.msg, 'warn');
       renderPanel(true);
     },
     select(x, y) {
@@ -808,9 +928,6 @@
 
   // ---------- init ----------
   function init() {
-    $('tabs').innerHTML = Object.entries(TABS)
-      .map(([id, t]) => `<button role="tab" data-tab="${id}" aria-selected="${id === ui.tab}">${t.name}</button>`)
-      .join('');
     $('tabs').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-tab]');
       if (!b) return;
@@ -821,6 +938,8 @@
       }
       ui.tab = b.dataset.tab;
       ui.confirm = null;
+      Progress.seeTab(G().s, ui.tab);
+      sfx('tick');
       panel.classList.add('open');
       $('tab-body').scrollTop = 0;
       renderPanel(true);
@@ -872,6 +991,19 @@
       const b = e.target.closest('button[data-speed]');
       if (b) G().setSpeed(Number(b.dataset.speed));
     });
+    const mute = $('mute-btn');
+    const paintMute = () => {
+      mute.classList.toggle('off', AIT.Sound.muted);
+      mute.setAttribute('aria-label', AIT.Sound.muted ? 'Turn sound on' : 'Mute sound');
+      mute.title = mute.getAttribute('aria-label');
+    };
+    paintMute();
+    mute.addEventListener('click', () => {
+      AIT.Sound.toggle();
+      paintMute();
+      sfx('tick');
+    });
+    window.addEventListener('pointerdown', () => AIT.Sound.unlock(), { once: true });
     $('menu-btn').addEventListener('click', () => {
       ui.confirm = null;
       showMenu();
@@ -910,6 +1042,14 @@
       } else if (what === 'really-new' || what === 'newgame') {
         ui.confirm = null;
         showNewGame(false);
+      } else if (what === 'reveal-deploy') {
+        const r = A.deploy(g.s, b.dataset.id);
+        closeModal();
+        if (r.ok) {
+          sfx('coin');
+          toast(r.msg, 'good');
+        }
+        renderPanel(true);
       } else if (what === 'mentor-toggle') {
         AIT.Mentor.setEnabled(g.s, !AIT.Mentor.enabled(g.s));
         showMenu();
@@ -943,15 +1083,25 @@
   function frame(now) {
     const g = G();
     const s = g.s;
-    if (!ui.modal && s.events.length) showEvent(s);
-    if (!ui.modal && s.over && !s.over.sandbox && !ui.overShown) {
-      ui.overShown = true;
-      showOver(s);
+    if (!ui.modal) {
+      if (s.reveal) {
+        const m = s.models.find((x) => x.id === s.reveal);
+        s.reveal = null;
+        if (m) showReveal(s, m);
+      } else if (ui.chapters.length) showChapter(s, ui.chapters.shift());
+      else if (s.events.length) showEvent(s);
+      else if (s.over && !s.over.sandbox && !ui.overShown) {
+        ui.overShown = true;
+        showOver(s);
+      }
     }
     AIT.Mentor.frame(now);
     if (now - ui.lastHud > 150) {
       ui.lastHud = now;
       const v = Sim.derive(s);
+      const got = Progress.check(s, v);
+      for (const n of got.notes) toast(n, 'unlock');
+      if (got.chapter) ui.chapters.push(got.chapter);
       renderHud(s, v);
       renderInspect(s);
       AIT.Mentor.check(s, v, !!ui.modal);

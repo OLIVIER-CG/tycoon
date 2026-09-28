@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-for (const f of ['data.js', 'events.js', 'sim.js']) {
+for (const f of ['data.js', 'flavor.js', 'events.js', 'sim.js']) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8'), { filename: f });
 }
 const { DATA: D, Sim } = globalThis.AIT;
