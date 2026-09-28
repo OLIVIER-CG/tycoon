@@ -76,10 +76,10 @@
 
   // ---------- small building blocks ----------
   const bar = (r, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.max(0, Math.min(100, r * 100)).toFixed(1)}%"></i></div>`;
-  function meter(label, used, cap, f, warnAt = 0.85) {
+  function meter(label, used, cap, f, warnAt = 0.85, coach = '') {
     const r = cap > 0 ? used / cap : used > 0 ? 2 : 0;
     const cls = r > 1 ? 'bad' : r > warnAt ? 'warn' : 'ok';
-    return `<div class="meter ${cls}"><div class="meter-top"><span>${label}</span><span class="mono">${f(used)} / ${f(cap)}</span></div>${bar(r)}</div>`;
+    return `<div class="meter ${cls}"${coach ? ` data-coach="${coach}"` : ''}><div class="meter-top"><span>${label}</span><span class="mono">${f(used)} / ${f(cap)}</span></div>${bar(r)}</div>`;
   }
   const disabled = (b) => (b ? ' disabled' : '');
   const confirmBtn = (key, label, confirmLabel, cls = '') =>
@@ -141,7 +141,7 @@
       <section class="card">
         <div class="row between"><div><div class="eyebrow">Your office</div><h3>${o.name}</h3></div><span class="tag mono">${o.size}×${o.size}</span></div>
         ${meter('Power draw', v.power, v.powerCap, fmt.kw)}
-        ${meter('Heat vs cooling', v.heat, v.cooling, fmt.kw)}
+        ${meter('Heat vs cooling', v.heat, v.cooling, fmt.kw, 0.85, 'heat')}
         ${meter('Desks used', s.staff.length, v.seats, (n) => n, 1.01)}
         <p class="small muted">Compute ${fmt.pf(v.effPF)} usable of ${fmt.pf(v.pf)} · rent ${money(o.rent)}/mo · power bill ${money(v.powerCostDay * 30)}/mo</p>
         ${nextHtml}
@@ -501,8 +501,14 @@
     else if (!s.training && s.models.length) alerts.push(['info', 'No training run in progress.', 'models']);
     const nextRound = D.ROUNDS[s.rounds.length];
     if (nextRound && !s.offer && s.roundCd <= s.day && nextRound.req(s, v)) alerts.push(['good', `Investors will take your ${nextRound.name} pitch.`, 'finance']);
-    const ah = alerts.map(([k, t, go]) => `<button class="alert ${k}" data-go="${go}">${esc(t)}</button>`).join('');
+    // during the tutorial Mira is the guide, so only real problems show here
+    const tutorial = AIT.Mentor.tutorialActive(s);
+    const ah = alerts
+      .filter(([k]) => !tutorial || k === 'bad' || k === 'warn')
+      .map(([k, t, go]) => `<button class="alert ${k}" data-go="${go}">${esc(t)}</button>`)
+      .join('');
     set('alerts', ah);
+    $('goal-card').hidden = tutorial;
 
     const goal = D.GOALS.find((g) => !s.goals[g.id]);
     const doneCount = Object.keys(s.goals).length;
@@ -622,9 +628,9 @@
       `<div class="eyebrow">A new AI lab</div>
       <h2>Found your company</h2>
       <p>It's January 2023 and everyone is talking about chatbots. You have a garage, one gaming PC and $75,000. Build the lab that gets to AGI first.</p>
+      <p class="small muted">Your mentor, Mira, will walk you through the basics once you start.</p>
       <div class="field"><label for="ng-company">Company name</label><input id="ng-company" maxlength="24" value="Nimbus Labs" autocomplete="off"></div>
       <div class="field"><label for="ng-family">Model name</label><input id="ng-family" maxlength="12" value="Nova" autocomplete="off"></div>
-      ${HELP}
       <div class="row gap">${canContinue ? '<button class="btn" data-modal="close">Back to my game</button>' : ''}<button class="btn primary" data-modal="start">Start the company</button></div>`,
       'intro',
       canContinue,
@@ -635,6 +641,7 @@
     openModal(
       `<div class="eyebrow">Menu</div><h2>${esc(G().s.company)}</h2>
       ${HELP}
+      <div class="row gap wrap"><button class="btn" data-modal="mentor-toggle">Mentor tips: ${AIT.Mentor.enabled(G().s) ? 'on' : 'off'}</button><button class="btn" data-modal="mentor-replay">Replay tutorial</button></div>
       <div class="row gap wrap"><button class="btn" data-modal="save">Save now</button><button class="btn" data-modal="close">Resume</button>${ui.confirm === 'newgame' ? '<button class="btn danger" data-modal="really-new">Yes, start over</button>' : '<button class="btn ghost" data-modal="ask-new">New game</button>'}</div>
       <p class="small muted">The game saves itself every month in this browser.</p>`,
       'menu',
@@ -903,6 +910,12 @@
       } else if (what === 'really-new' || what === 'newgame') {
         ui.confirm = null;
         showNewGame(false);
+      } else if (what === 'mentor-toggle') {
+        AIT.Mentor.setEnabled(g.s, !AIT.Mentor.enabled(g.s));
+        showMenu();
+      } else if (what === 'mentor-replay') {
+        AIT.Mentor.replay(g.s);
+        closeModal();
       } else if (what === 'sandbox') {
         A.sandbox(g.s);
         closeModal();
@@ -935,10 +948,13 @@
       ui.overShown = true;
       showOver(s);
     }
+    AIT.Mentor.frame(now);
     if (now - ui.lastHud > 150) {
       ui.lastHud = now;
-      renderHud(s, Sim.derive(s));
+      const v = Sim.derive(s);
+      renderHud(s, v);
       renderInspect(s);
+      AIT.Mentor.check(s, v, !!ui.modal);
     }
     if (now - ui.lastPanel > 400) {
       ui.lastPanel = now;
@@ -948,7 +964,8 @@
 
   AIT.UI = {
     init, frame, toast, renderPanel, canvasCb, showNewGame, closeModal,
-    isBlocking: () => !!ui.modal,
+    goTo,
+    isBlocking: () => !!ui.modal || AIT.Mentor.blocking(),
     resetOver: () => (ui.overShown = false),
   };
 })(typeof window !== 'undefined' ? window : globalThis);

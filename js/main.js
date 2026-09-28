@@ -19,6 +19,7 @@
       Render.setTool(null);
       Render.fit(D.OFFICES[0].size);
       UI.resetOver();
+      AIT.Mentor.reset();
       this.setSpeed(1);
       this.save();
       UI.renderPanel(true);
@@ -79,6 +80,7 @@
     const canvas = document.getElementById('view');
     Render.init(canvas, UI.canvasCb);
     UI.init();
+    AIT.Mentor.init();
     let restored = null;
     try {
       restored = data && data.save ? hydrate(JSON.parse(data.save)) : null;

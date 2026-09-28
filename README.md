@@ -29,6 +29,15 @@ Progress saves automatically to your browser every in-game month.
 | **Fund** | Eight funding rounds from Pre-seed to IPO. Each bigger office requires a funding round, and each round needs traction. |
 | **Survive** | Random events: GPU shortages, jailbreak scandals, copyright lawsuits, poaching, Senate hearings, enterprise deals, heatwaves and bubble talk. |
 
+**Mentor.** Mira Castell, a founder who has built two labs, walks you through
+an 11-step tutorial: place rigs, watch the heat, train, deploy, raise money and
+hire. The game pauses while she talks, and each task finishes the moment you do
+it. After that she only speaks up with about 20 hand-written tips, each once
+per game and only when it applies (overheating, running out of runway,
+unused research points, the AGI Project and so on). Non-urgent tips wait at
+least 45 seconds and 20 in-game days after her last message. You can switch
+tips off or replay the tutorial from the Menu.
+
 You win by finishing the AGI Project before any rival reaches 100 on
 OmniBench. You lose if a rival gets there first, or if you run out of cash for
 90 days.
@@ -46,6 +55,7 @@ js/events.js      random events and decisions
 js/sim.js         game state, daily simulation and player actions (no DOM, runs in Node)
 js/render.js      isometric canvas renderer and input
 js/ui.js          HUD, panels, modals and toasts
+js/mentor.js      mentor dialogue: tutorial steps and one-off tips
 js/main.js        boot, save/load and the main loop
 tools/simulate.js headless balance checker
 ```
