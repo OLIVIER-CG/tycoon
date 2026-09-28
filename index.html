@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AI Boom Tycoon</title>
+  <meta name="description" content="Build an AI lab from a garage to a hyperscale campus and race rival labs to AGI.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <style data-standalone>:root { padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px); }</style>
+</head>
+<body>
+  <div id="app">
+    <header id="hud">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 28 10v12L16 29 4 22V10z" fill="#ef5f24"/><path d="M16 3 28 10 16 17 4 10z" fill="#ff9a6b"/><path d="M16 17v12L4 22V10z" fill="#c9481a"/></svg>
+        <div class="brand-text"><div id="co-name">AI Boom Tycoon</div><div id="date" class="mono"></div></div>
+      </div>
+      <div id="speed" class="seg" role="group" aria-label="Game speed">
+        <button data-speed="0" aria-label="Pause" title="Pause (Space)"><span class="pause" aria-hidden="true"></span></button>
+        <button data-speed="1" title="1 day per second (1)">1×</button>
+        <button data-speed="2" title="3 days per second (2)">3×</button>
+        <button data-speed="3" title="8 days per second (3)">8×</button>
+      </div>
+      <div class="stats">
+        <div class="stat" id="hud-cash"></div>
+        <div class="stat" id="hud-subs"></div>
+        <div class="stat" id="hud-compute"></div>
+        <div class="stat" id="hud-hype"></div>
+        <div class="stat" id="hud-bench"></div>
+        <div class="stat" id="hud-val"></div>
+      </div>
+      <button id="menu-btn" class="btn ghost small">Menu</button>
+    </header>
+
+    <main id="stage">
+      <canvas id="view" aria-label="Your office, seen from above"></canvas>
+      <div class="overlay-left">
+        <div id="goal-card" class="goal"></div>
+        <div id="alerts"></div>
+      </div>
+      <div id="toolbar" hidden></div>
+      <div id="toasts" aria-live="polite"></div>
+      <div id="inspect" hidden></div>
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button data-zoom="in" aria-label="Zoom in">+</button>
+        <button data-zoom="out" aria-label="Zoom out">−</button>
+        <button data-zoom="fit" aria-label="Fit office to screen">Fit</button>
+      </div>
+    </main>
+
+    <footer id="ticker" title="Open the news"></footer>
+
+    <aside id="panel" class="open">
+      <button id="panel-handle" aria-label="Show or hide the panel"><span></span></button>
+      <nav id="tabs" role="tablist" aria-label="Management"></nav>
+      <div id="tab-body"></div>
+    </aside>
+  </div>
+  <div id="modal-root" hidden></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

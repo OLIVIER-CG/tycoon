@@ -1,0 +1,11 @@
+{
+  "name": "ai-boom-tycoon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An isometric tycoon game about building an AI lab and racing rivals to AGI.",
+  "scripts": {
+    "start": "npx --yes serve .",
+    "sim": "node tools/simulate.js 20"
+  },
+  "license": "UNLICENSED"
+}
