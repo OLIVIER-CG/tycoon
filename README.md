@@ -45,6 +45,15 @@ it lands on the leaderboard, and fictional users post about it. Big moments set
 off confetti and a cheer. Rival releases come with press lines, and small
 synthesized sound effects can be muted from the top bar.
 
+**Clear effects.** Every person in Team shows what they add (RP a day,
+training speed, users per GPU, market share, scandal risk) and what that means
+right now, such as "your current run finishes 12 days sooner" or "about 40
+subscribers ($800/mo), less than their salary". Candidates show the same before
+you hire them. The Market tab breaks your share down factor by factor against
+the leading rival and names the biggest drag. Models shows how training speed
+is calculated and refuses runs that would take over a year. R&D and morale show
+where their numbers come from. Cancelling a run refunds half the data cost.
+
 **Mentor.** Mira Castell, a founder who has built two labs, walks you through
 an 11-step tutorial: place rigs, watch the heat, train, deploy, raise money and
 hire. The game pauses while she talks, and each task finishes the moment you do

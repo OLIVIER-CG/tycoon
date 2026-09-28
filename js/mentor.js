@@ -108,7 +108,7 @@
     {
       id: 'research',
       lines: [
-        'Research points unlock bigger models and better hardware. Scaling Laws comes first: it unlocks Small models, and those are a big step up.',
+        'Research points unlock bigger models and better hardware. Scaling Laws comes first and unlocks Small models, but a Small model needs about 6,000 PF-days. A garage cannot do that. Raise money, move to the Loft and fill it with workstations first.',
         "That's the basics. The card in the top-left always shows your next goal, and I'll drop in when something important comes up. Go build something.",
       ],
       go: 'research',
@@ -133,6 +133,18 @@
       highlight: ['[data-coach="heat"]', '.chip[data-id="cooling"]'],
     },
     {
+      id: 'cut_costs', urgent: true,
+      when: (s) => s.stats.negDays >= 20,
+      lines: ["Still no cash after 20 days. To survive, get your costs below your revenue. Each person's card in Team shows what they add, so let go of whoever adds least. You can also sell hardware in Build for half its price."],
+      go: 'team',
+    },
+    {
+      id: 'slow_run', urgent: true,
+      when: (s, v) => s.training && v.trainPF * v.trainMult > 0 && (s.training.need - s.training.done) / (v.trainPF * v.trainMult) > 180,
+      lines: (s, v) => [`Careful: at your current compute, ${s.training.name} needs another ${Math.round((s.training.need - s.training.done) / (v.trainPF * v.trainMult))} days. Buy more GPUs to speed it up, or cancel now and get half the data cost back.`],
+      go: 'models',
+    },
+    {
       id: 'capacity', urgent: true,
       when: (s, v) => v.flagship && v.service < 0.85 && s.subs > 100,
       lines: ['Users are getting "at capacity" errors, and they will leave. Buy more GPUs, or lower the training share in Models so serving gets more compute.'],
@@ -151,10 +163,22 @@
       go: 'finance',
     },
     {
+      id: 'overhired',
+      when: (s, v) => s.staff.length >= 3 && v.payroll > Math.max(v.mrr, 1000) * 2.5 && s.cash < v.payroll * 8,
+      lines: (s, v) => [`Your payroll is ${money(v.payroll)} a month and revenue is ${money(v.mrr)}. Hire when there is work waiting: GPUs to train on, or research you need. The Team tab shows what each person adds.`],
+      go: 'team',
+    },
+    {
       id: 'offer',
       when: (s) => !!s.offer,
       lines: ['You have a term sheet. Dilution is the share of the company you give up. Take the money if you need it. Declining makes investors wait 30 days.'],
       go: 'finance',
+    },
+    {
+      id: 'first_hire',
+      when: (s) => s.staff.length >= 2,
+      lines: ['Welcome to management. Every card in Team now shows what that person adds, and candidates show what they would add before you hire them. Growth staff only pay off once your model can compete.'],
+      go: 'team',
     },
     {
       id: 'desks',

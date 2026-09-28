@@ -200,32 +200,22 @@
     v.computeMult = effectMult(s, 'compute');
     v.effPF = v.pf * v.powerFactor * v.thermal * v.computeMult + v.cloudPF;
 
-    let R = 0, E = 0, G = 0, S = 0, rpStaff = 0, payroll = 0;
-    for (const p of s.staff) {
-      payroll += p.salary;
-      if (p.trainUntil > s.day) continue;
-      const prod = 0.7 + (0.5 * p.morale) / 100;
-      const k = p.skill * prod;
-      if (p.role === 'researcher') {
-        R += k;
-        rpStaff += Math.pow(p.skill, 1.25) * 0.3 * prod;
-      } else if (p.role === 'engineer') E += k;
-      else if (p.role === 'growth') G += k;
-      else S += k;
-    }
-    Object.assign(v, { R, E, G, S, payroll, staffCount: s.staff.length });
+    const team = teamTotals(s.staff, s.day);
+    const payroll = s.staff.reduce((a, p) => a + p.salary, 0);
+    Object.assign(v, { R: team.R, E: team.E, G: team.G, S: team.S, payroll, staffCount: s.staff.length });
 
     const t = techTotals(s);
     v.tech = t;
-    v.trainMult = (1 + 0.6 * sat(E, 20)) * (1 + t.train);
-    v.inferEff = (1 + sat(E, 25)) * (1 + t.infer);
-    v.growthMult = 1 + sat(G, 15);
-    v.brand = 1 + 0.35 * sat(G, 20);
-    v.scandalMult = Math.exp(-S / 12) * t.safety;
-    v.researchQ = 1 + 0.08 * sat(R, 40);
+    const fx = teamEffects(team, t);
+    v.trainMult = fx.train;
+    v.inferEff = fx.infer;
+    v.growthMult = fx.growth;
+    v.brand = fx.brand;
+    v.scandalMult = fx.scandal;
+    v.researchQ = fx.quality;
     v.boardBonus = Math.min(0.3, v.boards * 0.03);
     v.rpMult = (1 + v.boardBonus) * (1 + 0.08 * Math.log10(1 + v.effPF));
-    v.rpStaff = rpStaff * v.rpMult;
+    v.rpStaff = team.rp * v.rpMult;
 
     const fm = flagship(s);
     v.flagship = fm;
@@ -257,6 +247,84 @@
     v.valuation = valuation(s, v);
     v.netWorth = v.valuation * s.equity;
     return v;
+  }
+
+  // ---------- what the team adds ----------
+
+  function teamTotals(staff, day) {
+    const t = { R: 0, E: 0, G: 0, S: 0, rp: 0 };
+    for (const p of staff) {
+      if (p.trainUntil > day) continue;
+      const prod = 0.7 + (0.5 * p.morale) / 100;
+      const k = p.skill * prod;
+      if (p.role === 'researcher') {
+        t.R += k;
+        t.rp += Math.pow(p.skill, 1.25) * 0.3 * prod;
+      } else if (p.role === 'engineer') t.E += k;
+      else if (p.role === 'growth') t.G += k;
+      else t.S += k;
+    }
+    return t;
+  }
+
+  function teamEffects(team, tech) {
+    return {
+      train: (1 + 0.6 * sat(team.E, 20)) * (1 + tech.train),
+      infer: (1 + sat(team.E, 25)) * (1 + tech.infer),
+      growth: 1 + sat(team.G, 15),
+      brand: 1 + 0.35 * sat(team.G, 20),
+      scandal: Math.exp(-team.S / 12) * tech.safety,
+      quality: 1 + 0.08 * sat(team.R, 40),
+      rp: team.rp,
+    };
+  }
+
+  // What one person adds: pass { remove: staffId } for someone on the team,
+  // or { add: candidate } for someone you might hire.
+  function impact(s, v, change) {
+    const base = teamEffects(teamTotals(s.staff, s.day), v.tech);
+    let staff = s.staff;
+    if (change.remove) staff = staff.filter((p) => p.id !== change.remove);
+    if (change.add) staff = staff.concat([{ ...change.add, morale: 70, trainUntil: 0 }]);
+    const alt = teamEffects(teamTotals(staff, s.day), v.tech);
+    const [a, b] = change.remove ? [base, alt] : [alt, base];
+    return {
+      rp: (a.rp - b.rp) * v.rpMult,
+      train: a.train / b.train - 1,
+      infer: a.infer / b.infer - 1,
+      brand: a.brand / b.brand - 1,
+      growth: a.growth / b.growth - 1,
+      scandal: 1 - a.scandal / b.scandal,
+      quality: a.quality / b.quality - 1,
+    };
+  }
+
+  // Where morale is heading, and why.
+  function moraleTarget(s, v) {
+    const parts = {
+      base: 45,
+      comfort: Math.min(25, (12 * v.decor) / Math.max(1, s.staff.length)),
+      hype: Math.min(8, s.hype / 10),
+      broke: s.cash < 0 ? -20 : 0,
+    };
+    parts.total = parts.base + parts.comfort + parts.hype + parts.broke;
+    return parts;
+  }
+
+  // The factors behind your market share, each compared with the leading rival.
+  function shareFactors(s, v) {
+    const fm = v.flagship;
+    if (!fm) return null;
+    const top = s.rivals.filter((r) => !RIVAL_BY_ID[r.id].open).reduce((a, r) => (r.cap > a.cap ? r : a));
+    return {
+      rival: RIVAL_BY_ID[top.id].name,
+      model: { you: fm.cap, them: top.cap, mult: Math.pow(fm.cap / top.cap, 3.2) },
+      features: { you: fm.appeal, them: rivalAppeal(s), mult: fm.appeal / rivalAppeal(s) },
+      hype: { you: s.hype, them: top.hype, mult: (0.6 + (0.8 * s.hype) / 100) / (0.6 + (0.8 * top.hype) / 100) },
+      price: { you: s.price, them: 20, mult: Math.pow(20 / s.price, 1.1) },
+      uptime: { you: v.service, mult: Math.pow(v.service, 1.5) },
+      growth: { mult: v.brand },
+    };
   }
 
   function valuation(s, v) {
@@ -297,14 +365,13 @@
   }
 
   function staffDaily(s, v) {
-    const decorBonus = Math.min(25, (12 * v.decor) / Math.max(1, s.staff.length));
-    const hypeBonus = Math.min(8, s.hype / 10);
+    const mood = moraleTarget(s, v);
     for (const p of [...s.staff]) {
       if (p.founder) {
         p.morale = 100;
       } else {
         p.perk = Math.max(0, (p.perk || 0) - 0.03);
-        const target = 45 + decorBonus + hypeBonus + p.perk + (s.cash < 0 ? -20 : 0);
+        const target = mood.total + p.perk;
         p.morale = clamp(p.morale + (target - p.morale) * 0.03, 0, 100);
       }
       if (p.trainUntil && p.trainUntil === s.day) {
@@ -755,6 +822,7 @@
       s.cash -= cost;
       s.month.data += cost;
       const v = derive(s);
+      const paid = cost;
       const n = s.modelCounter + 1;
       s.modelCounter = n;
       s.training = {
@@ -766,6 +834,7 @@
         name: size.id === 'agi' ? `${s.family}-Ω` : `${s.family}-${n} ${size.name}`,
         exp: expectedCap(s, sizeId, clean, v),
         loss: [],
+        cost: paid,
       };
       log(s, 'train', { name: s.training.name, data: Object.keys(clean).filter((k) => clean[k]).join('+') });
       return ok(`Training ${s.training.name}`);
@@ -773,10 +842,13 @@
 
     cancelTraining(s) {
       if (!s.training) return no('No training run');
-      news(s, `Training of ${s.training.name} was cancelled.`, 'warn');
+      const refund = Math.round((s.training.cost || 0) / 2);
+      s.cash += refund;
+      s.month.data -= refund;
+      news(s, `Training of ${s.training.name} was cancelled.${refund ? ' Half the data cost came back.' : ''}`, 'warn');
       log(s, 'cancel', { name: s.training.name });
       s.training = null;
-      return ok();
+      return ok(refund ? `Run cancelled. ${refund.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} of the data cost refunded.` : 'Run cancelled.');
     },
 
     deploy(s, id) {
@@ -895,7 +967,7 @@
   const trainCostFor = (p) => Math.max(2000, Math.round((p.salary || 6000) * 1.5));
 
   AIT.Sim = {
-    newGame, tick, derive, actions: A, hooks, news, addEffect, effectMult, itemCost, itemLocked,
+    newGame, tick, derive, actions: A, impact, moraleTarget, shareFactors, hooks, news, addEffect, effectMult, itemCost, itemLocked,
     expectedCap, trainingCost, salaryFor, trainCostFor, eventView, resolveEvent, endGame, makeCandidate,
     dateOf, flagship, topRival, marketSize, techTotals, refreshCandidates,
     util: { clamp, rand, randi, pick, sat, round1 },

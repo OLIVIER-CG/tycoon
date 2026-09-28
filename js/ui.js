@@ -180,26 +180,101 @@
       <p class="small muted">${locked.length > 1 ? `${locked.length - 1} more to discover as you grow. ` : ''}${Object.keys(D.ITEMS).some((t) => Sim.itemCost(s, t) !== D.ITEMS[t].cost) ? '* Hardware prices are moving with the market right now.' : ''}</p>`;
   }
 
+  // ---------- effects, spelled out ----------
+  const pctTxt = (x) => {
+    const p = Math.abs(x * 100);
+    return (p >= 10 ? Math.round(p) : p >= 1 ? p.toFixed(1) : p.toFixed(2)) + '%';
+  };
+  const cheapestTech = (s) => D.TECHS.filter((t) => !s.techs[t.id] && t.req.every((r) => s.techs[r])).sort((a, b) => a.cost - b.cost)[0];
+
+  // What one person adds, what it means right now, and whether it pays off.
+  function describeImpact(s, v, role, imp, adding, salary, founder) {
+    const who = founder ? 'you' : 'them';
+    const effects = [];
+    let now = '';
+    let verdict = null;
+    if (role === 'researcher') {
+      effects.push(`+${imp.rp.toFixed(1)} RP/day`);
+      if (imp.quality >= 0.001) effects.push(`+${pctTxt(imp.quality)} model quality`);
+      const t = cheapestTech(s);
+      if (t && s.rp < t.cost && v.rpDay > 0) {
+        const other = adding ? v.rpDay + imp.rp : Math.max(0.01, v.rpDay - imp.rp);
+        const need = t.cost - s.rp;
+        const diff = Math.round(Math.abs(need / v.rpDay - need / other));
+        now = adding ? `Gets you to ${t.name} about ${diff} days sooner.` : `Without ${who}, ${t.name} arrives ${diff} days later.`;
+      } else now = 'Research points unlock bigger models and better hardware.';
+    } else if (role === 'engineer') {
+      effects.push(`+${pctTxt(imp.train)} training speed`, `+${pctTxt(imp.infer)} users per GPU`);
+      if (s.training && v.trainPF > 0) {
+        const left = s.training.need - s.training.done;
+        const rate = v.trainPF * v.trainMult;
+        const other = adding ? rate * (1 + imp.train) : rate / (1 + imp.train);
+        const diff = Math.round(Math.abs(left / rate - left / other));
+        now = adding ? `Your current run would finish about ${diff} days sooner.` : `Without them, your current run takes ${diff} days longer.`;
+      } else if (v.flagship) now = 'Lets the same GPUs serve more users. Helps most while you train.';
+      else {
+        now = 'Only helps once you are training or serving a model.';
+        verdict = ['warn', 'Not useful yet'];
+      }
+    } else if (role === 'growth') {
+      effects.push(`+${pctTxt(imp.brand)} market share`, `users arrive ${pctTxt(imp.growth)} faster`);
+      if (v.flagship) {
+        const sh = s.share || 0;
+        const you = adding ? sh * (1 + imp.brand) : sh / (1 + imp.brand);
+        const sh2 = you / (you + (1 - sh));
+        const subs = Math.abs(sh2 - sh) * v.market;
+        const rev = subs * v.arpu;
+        now = `About ${fmt.num(subs)} subscribers (${money(rev)}/mo) with your current model.`;
+        verdict = rev >= salary ? ['ok', 'Pays for themselves'] : ['warn', 'Earns less than their salary'];
+      } else {
+        now = 'Only helps once a model is live.';
+        verdict = ['warn', 'Not useful yet'];
+      }
+    } else if (role === 'safety') {
+      effects.push(`−${pctTxt(imp.scandal)} scandal risk`);
+      now = v.flagship ? 'Fewer jailbreak scandals, and fewer bills to clean them up.' : 'Matters once a model is live.';
+      if (!v.flagship) verdict = ['warn', 'Not useful yet'];
+    }
+    return { effects, now, verdict };
+  }
+
+  function impactBlock(d, prefix) {
+    return `<div class="impact"><span class="impact-label">${prefix}</span>${d.effects.map((e) => `<span class="fx">${e}</span>`).join('')}</div>
+      <div class="impact-now">${d.now}${d.verdict ? ` <span class="tag ${d.verdict[0]}">${d.verdict[1]}</span>` : ''}</div>`;
+  }
+
+  function hireAdvice(s, v) {
+    if (!v.flagship) return 'No model is live yet. Researchers and engineers help you build one. Growth and safety staff can wait.';
+    const f = Sim.shareFactors(s, v);
+    if (f && f.model.mult < 0.3) return `Your model trails ${f.rival} (${f.model.you.toFixed(1)} vs ${f.model.them.toFixed(1)}). A better model matters far more than growth staff right now: researchers, engineers and GPUs.`;
+    if (v.payroll > Math.max(v.mrr, 1) * 2 && s.cash < v.burnMonth * 6) return 'Payroll is already well above revenue. Hire only when it clearly pays off.';
+    return 'Growth staff pay off once your model is competitive. Engineers help most while you train.';
+  }
+
   function renderTeam(s, v) {
     const free = v.seats - s.staff.length;
     const avg = s.staff.reduce((a, p) => a + p.morale, 0) / Math.max(1, s.staff.length);
     const nextIn = 7 - (s.day - s.candidatesDay);
     const refreshCost = 2000 * (1 + s.officeLevel * 2);
+    const mood = Sim.moraleTarget(s, v);
+    const team = s.staff.filter((p) => !p.founder);
+    const teamAvg = team.length ? team.reduce((a, p) => a + p.morale, 0) / team.length : 100;
     const staff = s.staff
       .map((p) => {
         const r = D.ROLES[p.role];
         const training = p.trainUntil > s.day;
         const cost = Sim.trainCostFor(p);
+        const d = describeImpact(s, v, p.role, Sim.impact(s, v, { remove: p.id }), false, p.salary, p.founder);
         return `<div class="person">
           <span class="role" style="--c:${p.founder ? 'var(--accent)' : r.color}">${r.short}</span>
           <div class="grow">
             <div class="name">${esc(p.name)}${p.founder ? ' <span class="tag">Founder</span>' : ''}</div>
-            <div class="sub mono">skill ${p.skill}/10 · ${p.founder ? 'no salary' : money(p.salary) + '/mo'}${training ? ` · training ${p.trainUntil - s.day}d` : ''}</div>
-            ${p.founder ? '<div class="bio">Started this in a garage.</div>' : p.bio ? `<div class="bio">${esc(p.bio)}</div>` : ''}
+            <div class="sub mono">skill ${p.skill}/10 · ${p.founder ? 'no salary' : money(p.salary) + '/mo'} · working at ${Math.round((0.7 + (0.5 * p.morale) / 100) * 100)}%</div>
+            ${training ? `<div class="impact-now">Away on a course for ${p.trainUntil - s.day} more days, so adding nothing right now.</div>` : impactBlock(d, 'Adds')}
             <div class="mood" title="Morale ${Math.round(p.morale)}%">${bar(p.morale / 100, p.morale < 35 ? 'bad' : p.morale < 55 ? 'warn' : 'ok')}</div>
           </div>
-          <div class="actions">
-            <button class="btn small" data-act="train" data-id="${p.id}"${disabled(training || p.skill >= 10 || s.cash < cost)}>Train ${money(cost)}</button>
+          <div class="actions col">
+            <button class="btn small" data-act="train" data-id="${p.id}"${disabled(training || p.skill >= 10 || s.cash < cost)} title="14-day course: +1 skill">Train ${money(cost)}</button>
             ${p.founder ? '' : confirmBtn('fire:' + p.id, 'Fire', 'Confirm', 'small ghost')}
           </div>
         </div>`;
@@ -208,35 +283,80 @@
     const cands = s.candidates
       .map((c) => {
         const r = D.ROLES[c.role];
+        const d = describeImpact(s, v, c.role, Sim.impact(s, v, { add: c }), true, c.salary);
         return `<div class="person">
           <span class="role" style="--c:${r.color}">${r.short}</span>
           <div class="grow">
             <div class="name">${esc(c.name)}${c.star ? ' <span class="tag hot">Star</span>' : ''}</div>
             <div class="sub mono">${r.name} · skill ${c.skill}/10 · ${money(c.salary)}/mo</div>
             ${c.bio ? `<div class="bio">${esc(c.bio)}</div>` : ''}
+            ${impactBlock(d, 'If hired')}
           </div>
           <div class="actions"><button class="btn small primary" data-act="hire" data-id="${c.id}"${disabled(free <= 0 || s.cash < c.salary)}>Hire</button></div>
         </div>`;
       })
       .join('');
+    const does = [
+      ['Research', `${v.rpStaff.toFixed(1)} RP/day${v.rpCompute > 0.05 ? ` (+${v.rpCompute.toFixed(1)} from idle GPUs)` : ''}`],
+      ['Engineering', v.E > 0 ? `training +${pctTxt(v.trainMult / (1 + v.tech.train) - 1)}, users per GPU +${pctTxt(v.inferEff / (1 + v.tech.infer) - 1)}` : 'no engineers'],
+      ['Growth', v.G > 0 ? `market share +${pctTxt(v.brand - 1)}, user growth +${pctTxt(v.growthMult - 1)}` : 'no growth staff'],
+      ['Safety', v.S > 0 ? `scandal risk −${pctTxt(1 - Math.exp(-v.S / 12))}` : 'no safety staff'],
+    ];
     return `
       <section class="card">
         <dl class="kpis">
           <div><dt>People</dt><dd class="mono">${s.staff.length}</dd></div>
-          <div><dt>Payroll</dt><dd class="mono">${money(v.payroll)}/mo</dd></div>
-          <div><dt>Morale</dt><dd class="mono">${Math.round(avg)}%</dd></div>
+          <div><dt>Payroll</dt><dd class="mono${v.payroll > v.mrr && team.length ? ' warn-text' : ''}">${money(v.payroll)}/mo</dd></div>
+          <div><dt>Revenue</dt><dd class="mono">${money(v.mrr)}/mo</dd></div>
           <div><dt>Free desks</dt><dd class="mono${free <= 0 ? ' bad-text' : ''}">${free}</dd></div>
         </dl>
+        <div class="eyebrow">What your team does</div>
+        <dl class="does">${does.map(([k, t]) => `<div><dt>${k}</dt><dd>${t}</dd></div>`).join('')}</dl>
         ${free <= 0 ? '<p class="small lock-note">Every desk is taken. Build desks (Build › Office) to hire more.</p>' : ''}
-        <p class="small muted">Comfort items and hype raise morale. Low morale slows work, and unhappy people quit.</p>
       </section>
+      ${team.length ? `<section class="card">
+        <div class="row between"><div class="eyebrow">Morale</div><span class="mono small">${Math.round(teamAvg)}% now · heading to ${Math.round(mood.total)}%</span></div>
+        <div class="mood-parts small"><span>base 45</span><span class="${mood.comfort < 8 ? 'warn-text' : ''}">comfort +${Math.round(mood.comfort)}</span><span>hype +${Math.round(mood.hype)}</span>${mood.broke ? '<span class="bad-text">no cash −20</span>' : ''}</div>
+        <p class="small muted">At ${Math.round(teamAvg)}% morale people work at ${Math.round((0.7 + (0.5 * teamAvg) / 100) * 100)}% speed. Below 25% they may quit.${mood.comfort < 12 ? ' Comfort items in Build are the cheapest fix: aim for 2 comfort points per person.' : ''}</p>
+      </section>` : ''}
       <h3 class="section-title">Your team</h3>
       <div class="list">${staff}</div>
       <div class="row between section-title"><h3>Candidates</h3><span class="small muted">new faces in ${nextIn}d</span></div>
+      <p class="small advice">${hireAdvice(s, v)}</p>
       <div class="list">${cands || '<p class="muted small">No one is looking right now.</p>'}</div>
       <div class="row gap"><button class="btn" data-act="refresh"${disabled(s.cash < refreshCost)}>Find more candidates · ${money(refreshCost)}</button></div>
-      <p class="small muted">Hiring pays one month of salary as a signing bonus.</p>
-      <div class="legend">${Object.values(D.ROLES).map((r) => `<div><span class="role" style="--c:${r.color}">${r.short}</span> <b>${r.name}</b> ${r.desc}</div>`).join('')}</div>`;
+      <p class="small muted">Hiring pays one month of salary as a signing bonus. Everyone needs a desk.</p>`;
+  }
+
+  // Share breakdown against the leading rival, with the biggest drag called out.
+  function renderShareFactors(s, v) {
+    const f = Sim.shareFactors(s, v);
+    if (!f) return '';
+    const rows = [
+      ['Model score', `${f.model.you.toFixed(1)} vs ${f.model.them.toFixed(1)}`, f.model.mult, 'Train a bigger model. That takes more compute and research.'],
+      ['Features', `×${f.features.you.toFixed(2)} vs ×${f.features.them.toFixed(2)}`, f.features.mult, 'Research RLHF, Long Context and Multimodal, then train a new model.'],
+      ['Hype', `${Math.round(f.hype.you)} vs ${Math.round(f.hype.them)}`, f.hype.mult, 'Run a campaign below or deploy a better model.'],
+      ['Price', `$${f.price.you} vs $${f.price.them}`, f.price.mult, 'Lower your price. Each subscriber pays less, but more of them come.'],
+      ['Uptime', fmt.pct(f.uptime.you), f.uptime.mult, 'Add GPUs or lower the training share so every user gets served.'],
+    ];
+    const worst = rows.reduce((a, r) => (r[2] < a[2] ? r : a));
+    const chip = (name, m) => {
+      if (name === 'Uptime') return m >= 0.99 ? ['ok', 'Full'] : m >= 0.8 ? ['warn', 'Dropping'] : ['bad', 'Failing'];
+      return m >= 1.05 ? ['ok', 'Ahead'] : m >= 0.9 ? ['', 'Even'] : m >= 0.5 ? ['warn', 'Behind'] : ['bad', 'Far behind'];
+    };
+    return `<section class="card">
+      <div class="eyebrow">What decides your share · compared with ${esc(f.rival)}</div>
+      <div class="factors">${rows
+        .map((r) => {
+          const [cls, txt] = chip(r[0], r[2]);
+          return `<div class="factor${r === worst && worst[2] < 0.9 ? ' worst' : ''}"><span class="f-name">${r[0]}</span><span class="mono small">${r[1]}</span><span class="tag ${cls}">${txt}</span></div>`;
+        })
+        .join('')}
+        <div class="factor"><span class="f-name">Growth team</span><span class="mono small">${v.G > 0 ? '+' + pctTxt(f.growth.mult - 1) : 'none'}</span><span class="tag${v.G > 0 ? ' ok' : ''}">${v.G > 0 ? 'Helping' : 'None'}</span></div>
+      </div>
+      ${worst[2] < 0.9 ? `<p class="small"><b>Biggest drag: ${worst[0].toLowerCase()}.</b> ${worst[3]}</p>` : '<p class="small"><b>You are competitive.</b> Keep your model ahead and your hype up.</p>'}
+      <p class="small muted">OmniBench score counts the most: a 10% higher score wins about 36% more share.</p>
+    </section>`;
   }
 
   function renderResearch(s, v) {
@@ -248,8 +368,9 @@
     return `
       <section class="card rp-card">
         <div class="row between"><div><div class="eyebrow">Research points</div><div class="big mono">${Math.floor(s.rp).toLocaleString('en-US')} RP</div></div>
-        <div class="right small"><div class="mono">+${v.rpDay.toFixed(1)}/day</div><div class="muted">${v.boards ? `whiteboards +${Math.round(v.boardBonus * 100)}%` : 'no whiteboards yet'}</div></div></div>
-        <p class="small muted">Researchers earn RP every day. Idle compute runs small experiments too.</p>
+        <div class="right small"><div class="mono">+${v.rpDay.toFixed(1)}/day</div></div></div>
+        <div class="mood-parts small"><span>people +${v.rpStaff.toFixed(1)}</span><span>idle GPUs +${v.rpCompute.toFixed(1)}</span><span>${v.boards ? `whiteboards +${Math.round(v.boardBonus * 100)}%` : 'no whiteboards'}</span></div>
+        <p class="small muted">Researchers earn most of your RP. Skill counts: a skill-6 researcher makes about 3× what a skill-2 one does. Whiteboards add 3% each.</p>
       </section>
       ${tiers
         .map(
@@ -271,11 +392,11 @@
       ${hidden ? `<p class="small muted">${hidden} more technologies are waiting further down the road.</p>` : ''}`;
   }
 
-  function trainRate(s, v) {
-    if (s.training) return v.trainPF * v.trainMult;
-    const pf = s.autoAlloc ? Math.max(0, v.effPF - v.need * 1.15) : v.effPF * s.allocTrain;
-    return pf * v.trainMult;
+  function trainPF(s, v) {
+    if (s.training) return v.trainPF;
+    return s.autoAlloc ? Math.max(0, v.effPF - v.need * 1.15) : v.effPF * s.allocTrain;
   }
+  const trainRate = (s, v) => trainPF(s, v) * v.trainMult;
 
   // data sources the player has ticked and actually unlocked
   function cleanData(s) {
@@ -317,7 +438,7 @@
           <div class="loss">${sparkline(t.loss, 320, 90, 'loss-chart')}<span class="loss-label mono small">loss ${t.loss.length ? t.loss[t.loss.length - 1].toFixed(2) : '11.00'}</span></div>
           ${bar(p, 'accent')}
           <div class="row between small mono"><span>${fmt.pct(p, 1)} · ${fmt.num(t.done)} / ${fmt.pfdays(t.need)}</span><span>${eta === Infinity ? 'stalled, no training compute' : `~${eta} days left`}</span></div>
-          <div class="row gap">${confirmBtn('cancel-train', 'Cancel run', 'Confirm: lose progress', 'small ghost')}</div>
+          <div class="row gap">${confirmBtn('cancel-train', 'Cancel run (half the data cost back)', 'Confirm: lose all progress', 'small ghost')}</div>
         </section>`;
     } else {
       const data = cleanData(s);
@@ -343,9 +464,11 @@
             <div><dt>Expected score</dt><dd class="mono">${(exp * 0.96).toFixed(0)}–${Math.min(size.id === 'agi' ? 100 : 99, exp * 1.04).toFixed(0)}</dd></div>
             <div><dt>Your flagship</dt><dd class="mono">${fm ? fm.cap.toFixed(1) : '–'}</dd></div>
             <div><dt>Top rival</dt><dd class="mono">${top ? top.cap.toFixed(1) : '–'}</dd></div>
-            <div><dt>Time at current compute</dt><dd class="mono">${days === Infinity ? 'no spare compute' : days > 3650 ? '10+ years' : days + ' days'}</dd></div>
+            <div><dt>Time at current compute</dt><dd class="mono${days > 365 ? ' bad-text' : days > 150 ? ' warn-text' : ''}">${days === Infinity ? 'no spare compute' : days > 3650 ? '10+ years' : days + ' days'}</dd></div>
           </dl>
-          <button class="btn primary wide" data-act="start-train"${disabled(s.cash < cost)}>Start training · ${money(cost)}</button>
+          <p class="small muted">Speed: ${fmt.pf(trainPF(s, v))} for training × ${v.trainMult.toFixed(2)} from engineers and research = ${fmt.num(rate)} PF-days a day. This model needs ${fmt.pfdays(size.pfdays)}.</p>
+          ${days > 365 ? `<p class="lock-note">Too slow to start: ${days === Infinity ? 'you have no spare compute' : `it would take ${days > 3650 ? 'over 10 years' : days + ' days'}`}. Add GPUs in Build › Compute${s.officeLevel === 0 ? ' (a bigger office holds much faster ones)' : ''}, or pick a smaller model.</p>` : days > 150 ? `<p class="small warn-text">This run will take ${days} days. More GPUs would make it much faster.</p>` : ''}
+          <button class="btn primary wide" data-act="start-train"${disabled(s.cash < cost || days > 365)}>Start training · ${money(cost)}</button>
         </section>`;
     }
 
@@ -392,8 +515,8 @@
           <div><dt>Users served</dt><dd class="mono${v.service < 0.95 ? ' bad-text' : ''}">${fmt.pct(v.service)}</dd></div>
           <div><dt>Flagship</dt><dd class="mono">${fm ? esc(fm.name) : 'none deployed'}</dd></div>
         </dl>
-        <p class="small muted">Share depends on your flagship's OmniBench score against rivals, plus hype, price and uptime.</p>
       </section>
+      ${renderShareFactors(s, v)}
       <section class="card">
         <label class="slider-label" for="price">Subscription price <b class="mono">$${s.price}/mo</b></label>
         <input id="price" type="range" min="5" max="60" step="1" value="${s.price}" data-input="price">
@@ -572,7 +695,7 @@
     const p = idx >= 0 ? s.staff[idx] : null;
     const html = `<img src="${AIT.Render.icon(it.type)}" alt="" width="48" height="48">
       <div class="grow"><div class="name">${d.name}</div><div class="small muted">${d.desc}</div>
-      ${p ? `<div class="small"><b>${esc(p.name)}</b> · ${D.ROLES[p.role].name} · skill ${p.skill} · morale ${Math.round(p.morale)}%</div>` : d.seats ? '<div class="small muted">Empty desk. Hire someone in Team.</div>' : ''}
+      ${p ? `<div class="small"><b>${esc(p.name)}</b> · ${D.ROLES[p.role].name} · skill ${p.skill} · morale ${Math.round(p.morale)}%</div><div class="small">Adds ${describeImpact(s, Sim.derive(s), p.role, Sim.impact(s, Sim.derive(s), { remove: p.id }), false, p.salary).effects.join(' · ')}</div>` : d.seats ? '<div class="small muted">Empty desk. Hire someone in Team.</div>' : ''}
       <div class="small mono">${statLine(d)}</div></div>
       <div class="actions"><button class="btn small" data-act="sell-selected">Sell ${money(d.cost * 0.5)}</button><button class="btn small ghost" data-act="close-inspect" aria-label="Close">Close</button></div>`;
     if (box.dataset.html !== html) {
@@ -895,7 +1018,7 @@
         const [kind, arg] = key.split(':');
         if (kind === 'fire') result(A.fire(s, arg));
         else if (kind === 'open') result(A.openSource(s, arg));
-        else if (kind === 'cancel-train') result(A.cancelTraining(s), false);
+        else if (kind === 'cancel-train') result(A.cancelTraining(s));
         break;
       }
       case 'sell-selected': {
