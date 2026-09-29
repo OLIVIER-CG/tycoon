@@ -24,9 +24,14 @@
       id: s.runId,
       sentAt: new Date().toISOString(),
       company: s.company,
-      result: s.over ? { win: s.over.win, text: s.over.text, date: date(s.over.day) } : null,
+      result: s.over ? { win: s.over.win, text: s.over.text, ending: s.over.ending || null, date: date(s.over.day) } : null,
+      mode: s.mode || 'standard',
+      difficulty: s.difficulty || 'normal',
+      seed: s.seed != null ? s.seed : null,
       inGameDate: date(s.day),
       yearsPlayed: r1(s.day / 365),
+      playMinutes: r0((s.playMs || 0) / 60000),
+      daysWithoutTraining: s.stats.idleDays || 0,
       final: {
         cash: r0(s.cash),
         daysWithNegativeCash: s.stats.negDays,
@@ -50,6 +55,13 @@
         powerCapKw: r1(v.powerCap),
         heatKw: r1(v.heat),
         coolingKw: r1(v.cooling),
+        gpus: v.computeItems,
+        overheatingGpus: v.hotItems,
+        computeLostToHeatPct: r0((1 - v.thermal) * 100),
+        researchersNearWhiteboardPct: (() => {
+          const rs = s.staff.filter((p) => p.role === 'researcher');
+          return rs.length ? r0((100 * rs.filter((p) => (v.seatInfo.get(p.id) || {}).board > 0).length) / rs.length) : null;
+        })(),
         servicePct: r0(v.service * 100),
         researchPoints: r0(s.rp),
         rpPerDay: r1(v.rpDay),
@@ -62,12 +74,14 @@
         staff: s.staff.map((p) => ({ role: p.founder ? 'founder' : p.role, skill: p.skill, salary: p.salary, morale: r0(p.morale) })),
         items: counts,
         techs: Object.keys(s.techs),
+        alignment: v.alignment,
+        products: D.PRODUCTS.map((p) => ({ id: p.id, live: !!(s.products && s.products[p.id] && s.products[p.id].live), price: s.products && s.products[p.id] ? s.products[p.id].price : null, customers: r0((v.products[p.id] || {}).users || 0), revenue: r0((v.products[p.id] || {}).revenue || 0) })),
       },
       rivals: s.rivals.map((r) => ({ name: Sim.RIVAL_BY_ID[r.id].name, score: r.cap, version: r.version })),
       models: s.models.map((m) => ({ name: m.name, score: m.cap, trained: date(m.day), open: !!m.open })),
       monthly: s.history.map((h) => ({
         month: h.label, cash: r0(h.cash), revenue: r0(h.revenue), costs: r0(h.costs), capex: r0(h.capex),
-        funding: r0((h.detail && h.detail.funding) || 0), subs: h.subs, mrr: r0(h.mrr), valuation: r0(h.valuation),
+        funding: r0((h.detail && h.detail.funding) || 0), products: r0((h.detail && h.detail.prev) || 0), subs: h.subs, mrr: r0(h.mrr), valuation: r0(h.valuation),
       })),
       timeline: timeline.map((e) => ({ date: date(e.d), what: e.what })),
       news: s.news.map((n) => ({ date: date(n.day), kind: n.kind, text: n.text })),
@@ -93,6 +107,8 @@
       case 'raise': return `raised ${e.round}: $${e.raise} at $${e.pre} pre (${e.dil}% dilution)`;
       case 'decline': return `declined ${e.round} term sheet`;
       case 'choice': return `event ${e.id}: chose "${e.label}"`;
+      case 'launch': return `launched product ${e.id}`;
+      case 'pprice': return `${e.id} price $${e.from} → $${e.to}`;
       default: return e.a;
     }
   }

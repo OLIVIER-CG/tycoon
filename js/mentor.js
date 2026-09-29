@@ -48,8 +48,8 @@
     {
       id: 'heat',
       lines: [
-        'Good. Every GPU turns power into heat. Keep an eye on the Heat vs cooling bar in Build.',
-        'If heat goes above cooling, your GPUs slow down, and running hot for long can start a fire. Box fans and AC units are cheap insurance.',
+        'Good. Every GPU turns power into heat. The building cools a little on its own, but that runs out fast.',
+        'A cooler only reaches GPUs close to it: a box fan covers the tiles right around it, an AC unit two tiles out. When you place one, a blue square shows its reach. Overheating GPUs glow red and slow down.',
       ],
       go: 'build:cooling',
       highlight: ['[data-coach="heat"]'],
@@ -127,8 +127,8 @@
     },
     {
       id: 'overheat', urgent: true,
-      when: (s, v) => v.thermal < 1 && v.pf > 0,
-      lines: ["It's getting hot in here. Heat is above your cooling, so your GPUs are throttling. Add fans, AC units or chillers from Build › Cooling before something catches fire."],
+      when: (s, v) => v.hotItems > 0 && v.thermal < 0.97,
+      lines: (s, v) => [`It's getting hot in here. ${v.hotItems} of your GPUs are overheating, the ones glowing red. Coolers only reach GPUs inside their square, so put a fan or AC unit right next to the hot ones.`],
       go: 'build:cooling',
       highlight: ['[data-coach="heat"]', '.chip[data-id="cooling"]'],
     },
@@ -283,13 +283,25 @@
       go: 'build:compute',
     },
     {
-      id: 'agi', urgent: true,
-      when: (s) => !!s.techs.agi_theory,
-      lines: [
-        'The AGI Project is unlocked. It needs 500 million PF-days and $1.5B.',
-        'Switch the compute split to Manual in Models while it runs. Otherwise serving your users will starve the training run.',
-      ],
-      go: 'models',
+      id: 'boards',
+      when: (s, v) => v.boards > 0 && s.staff.some((p) => p.role === 'researcher' && v.seatInfo.get(p.id) && !v.seatInfo.get(p.id).board),
+      lines: ['Whiteboards only help researchers who sit within 2 tiles of one. Put them between the research desks. Select a whiteboard to see its reach.'],
+      go: 'build:office',
+    },
+    {
+      id: 'product',
+      when: (s) => !!s.flagshipId && D.PRODUCTS.some((p) => s.techs[p.tech] && !s.products[p.id].live),
+      lines: (s) => {
+        const p = D.PRODUCTS.find((x) => s.techs[x.tech] && !s.products[x.id].live);
+        return [`You can now sell more than a chat app. ${p.name} is ready to launch from Market. It has its own customers and its own price, and it shares your model's score with the rivals.`];
+      },
+      go: 'market',
+    },
+    {
+      id: 'alignment',
+      when: (s, v) => !!s.techs.constitutional || (v.topRival && v.topRival.cap >= 55),
+      lines: ['People are starting to ask whether your models are safe. The Race tab shows your alignment score. Safety staff, safety research and your choices in a crisis all count, and they decide how the world reacts if you reach AGI.'],
+      go: 'race',
     },
   ];
 

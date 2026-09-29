@@ -15,19 +15,32 @@ Open `index.html` in a browser. Or serve the folder:
 npm start          # serves the folder with npx serve
 ```
 
-Progress saves automatically to your browser every in-game month.
+Progress saves automatically to your browser every in-game month. Saves from
+older versions are upgraded when they load.
+
+**Share it.** `.github/workflows/pages.yml` publishes the game to GitHub Pages
+on every push to `main`. Turn it on once under Settings › Pages › Source:
+GitHub Actions. Outside the Claude artifact, "Send this run to Claude" shows
+the report for copying, so testers can paste it into a chat or send it to you.
+
+**Modes.** Standard games come in Relaxed, Normal and Hard. The Daily
+challenge gives everyone the same seed for the day (same candidates, events and
+rival moves) and ranks results on a shared leaderboard. Sandbox starts you with
+$10M, no bankruptcy and rivals who never quite reach AGI.
 
 ## How it plays
 
 | Loop | What you do |
 | --- | --- |
-| **Build** | Place GPUs, cooling, power, desks and comfort items on an isometric grid. Heat above your cooling throttles GPUs and can start fires. Power above your capacity browns them out. |
+| **Build** | Place GPUs, cooling, power, desks and comfort items on an isometric grid. Heat is local: each cooler only reaches GPUs within its range (a blue square while you place it), and hot GPUs glow red and slow down. Whiteboards help researchers within 2 tiles, comfort items help desks within 3. Late-game hardware takes 2×2 tiles. |
 | **Train** | Pick a model size (Tiny 1B to Ultra 10T) and training data (licensed, synthetic, human feedback). Runs consume compute measured in PF-days, with a live loss curve. |
 | **Deploy** | Your live model wins market share based on its OmniBench score against rivals, your hype, your price and whether you have enough compute to serve everyone. |
+| **Sell** | Besides the chat app, launch a Developer API, Image Studio and Agents. Each has its own customers, price and compute bill. |
 | **Hire** | Researchers earn research points, engineers speed up training and serving, growth staff bring users, and safety staff prevent scandals. Everyone needs a desk and a reason to stay. |
 | **Research** | 26 technologies across five tiers, from Scaling Laws to the AGI Blueprint. They unlock bigger models, better hardware and efficiency gains. |
 | **Fund** | Eight funding rounds from Pre-seed to IPO. Each bigger office requires a funding round, and each round needs traction. |
-| **Survive** | Random events: GPU shortages, jailbreak scandals, copyright lawsuits, poaching, Senate hearings, enterprise deals, heatwaves and bubble talk. |
+| **Survive** | Random events: GPU shortages, jailbreak scandals, copyright lawsuits, poaching, Senate hearings, enterprise deals, heatwaves and bubble talk. Rivals act too: they launch free tiers, start price wars, sue you and answer your launches with their own. |
+| **Stay aligned** | Safety staff, safety research and your choices in a crisis add up to an alignment score. It decides how the world greets your AGI: trusted, uneasy or reckless. |
 
 **Pacing.** The game starts with two tabs, two stats and two items. Tabs,
 stats, build categories, research tiers, model sizes and funding rounds appear
@@ -53,6 +66,16 @@ you hire them. The Market tab breaks your share down factor by factor against
 the leading rival and names the biggest drag. Models shows how training speed
 is calculated and refuses runs that would take over a year. R&D and morale show
 where their numbers come from. Cancelling a run refunds half the data cost.
+
+**Guidance.** R&D tags every technology on the path to the AGI Blueprint and
+counts how many are done. Models has a planner that says how much compute a
+run needs to finish in 150 days and how many of your best GPUs that means. An
+alert fires when your GPUs sit idle for 20 days, and a full-screen prompt
+appears the moment the AGI Blueprint is done. The game counts real play time
+(only while the page is visible) and shows it at the end.
+
+**Extras.** 18 achievements saved in your browser, a quiet generated music
+loop you can switch off in the Menu, and synthesized sound effects.
 
 **Mentor.** Mira Castell, a founder who has built two labs, walks you through
 an 11-step tutorial: place rigs, watch the heat, train, deploy, raise money and
@@ -86,7 +109,12 @@ js/ui.js          HUD, panels, modals, launch reveals, chapter cards and toasts
 js/mentor.js      mentor dialogue: tutorial steps and one-off tips
 js/report.js      compact run report for "Send this run to Claude"
 js/main.js        boot, save/load and the main loop
+tests/            node:test suite for the simulation (npm test)
+tools/bot.js      a placement-aware bot that plays through the same actions as a player
 tools/simulate.js headless balance checker
+tools/analyze-runs.js  summarizes many run reports
+tools/build-artifact.js  bundles the game into one HTML file (npm run build)
+.github/workflows CI (tests on every push) and GitHub Pages deploys
 ```
 
 ## Balancing
@@ -94,19 +122,22 @@ tools/simulate.js headless balance checker
 `js/sim.js` has no DOM access, so a bot can play the whole game in Node:
 
 ```sh
+npm test           # rules, save migration, seeded replays and a balance smoke test
 npm run sim        # 20 bot playthroughs, prints the median year for each goal
+node tools/simulate.js 10 --difficulty=hard
+npm run analyze -- runs/   # summarize run reports players sent you
 ```
 
-With the current numbers, an efficient bot reaches AGI around year 6.5. The
-leading rival gets there around year 9.5, so slower players have to push to
-win. Most tuning lives in `js/data.js`. The market, valuation and rival curves
-are in `js/sim.js`.
+With the current numbers, the bot reaches AGI in about year 6.5 on Normal and
+wins 9 of 10 games; the leading rival stands near 90 when it does and reaches
+100 around year 9.5. On Hard the rival is near 94 at that point, on Relaxed
+near 78. Most tuning lives in `js/data.js`. The market, valuation and rival
+curves are in `js/sim.js`. All game randomness goes through one seeded
+generator, so a seed replays exactly.
 
 ## Ideas for next steps
 
-- Staff who walk between desks, the coffee machine and meeting rooms
-- Multi-tile items and room zoning (server hall, research wing)
-- Sound effects and music
-- Several product lines (chat app, API, image model, agents) with separate pricing
-- Rival labs that poach from you, sue you and react to your launches
-- A sandbox mode and a daily-seed challenge leaderboard
+- A desktop build for Steam (Electron or Tauri wrapper around the same files)
+- Hand-drawn art and a composed soundtrack
+- Named rooms with bonuses (server hall, research wing)
+- More rival personalities and late-game events

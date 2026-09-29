@@ -39,31 +39,31 @@
   // powerCap: extra power capacity in kW. seats: desks. decor: morale points.
   const ITEMS = {
     desk: { name: 'Desk', cat: 'office', cost: 1500, power: 0.3, seats: 1, desc: 'Seats one person. Everyone on your team needs a desk.' },
-    whiteboard: { name: 'Whiteboard', cat: 'office', cost: 900, decor: 1, rpBonus: 0.03, desc: '+3% research each (up to +30%). Covered in half-erased equations.' },
+    whiteboard: { name: 'Whiteboard', cat: 'office', cost: 900, rpBonus: 0.08, radius: 2, desc: 'Researchers within 2 tiles work 8% faster (up to +40% from five boards). Covered in half-erased equations.' },
 
     rig: { name: 'Gaming Rig', cat: 'compute', cost: 3000, pf: 1, power: 0.8, desc: 'A consumer GPU tower. Loud, cheap and surprisingly useful.' },
     workstation: { name: '4-GPU Workstation', cat: 'compute', cost: 28000, pf: 6, power: 2.5, minOffice: 1, desc: 'Four workstation GPUs under one desk-side case.' },
     server: { name: '8-GPU Server', cat: 'compute', cost: 220000, pf: 45, power: 10, minOffice: 2, desc: 'The industry workhorse. Eight datacenter GPUs on a fast interconnect.' },
     rack: { name: 'GPU Rack', cat: 'compute', cost: 1.6e6, pf: 300, power: 40, minOffice: 3, desc: 'A full rack of servers with its own network fabric.' },
-    superpod: { name: 'SuperPod', cat: 'compute', cost: 14e6, pf: 3000, power: 220, tech: 'custom_silicon', desc: 'Your custom chips, liquid-cooled and wired as one giant accelerator.' },
-    wafer: { name: 'Wafer-Scale Engine', cat: 'compute', cost: 60e6, pf: 16000, power: 600, tech: 'wafer_scale', desc: 'One chip the size of a dinner plate. Draws as much power as a small town.' },
+    superpod: { name: 'SuperPod', cat: 'compute', size: 2, cost: 56e6, pf: 12000, power: 880, minOffice: 3, tech: 'custom_silicon', desc: 'Your custom chips wired as one giant accelerator. Takes 2×2 tiles.' },
+    wafer: { name: 'Wafer-Scale Engine', cat: 'compute', size: 2, cost: 240e6, pf: 64000, power: 2400, minOffice: 3, tech: 'wafer_scale', desc: 'Chips the size of dinner plates, four to a cabinet. Takes 2×2 tiles.' },
 
-    fan: { name: 'Box Fan', cat: 'cooling', cost: 80, cooling: 1, power: 0.05, desc: 'Removes 1 kW of heat. Point it at the rigs and hope.' },
-    ac: { name: 'AC Unit', cat: 'cooling', cost: 3000, cooling: 8, power: 1, desc: 'Removes 8 kW of heat.' },
-    chiller: { name: 'Industrial Chiller', cat: 'cooling', cost: 80000, cooling: 120, power: 8, minOffice: 2, desc: 'Removes 120 kW of heat.' },
-    liquid: { name: 'Liquid Cooling Loop', cat: 'cooling', cost: 900000, cooling: 1200, power: 40, tech: 'liquid_cooling', desc: 'Removes 1.2 MW of heat by piping coolant straight to the chips.' },
-    immersion: { name: 'Immersion Tank', cat: 'cooling', cost: 9e6, cooling: 10000, power: 250, tech: 'immersion', desc: 'Removes 10 MW of heat. The servers take a bath in dielectric fluid.' },
+    fan: { name: 'Box Fan', cat: 'cooling', cost: 80, cooling: 1, power: 0.05, radius: 1, desc: 'Removes 1 kW of heat from GPUs within 1 tile. Point it at the rigs and hope.' },
+    ac: { name: 'AC Unit', cat: 'cooling', cost: 3000, cooling: 8, power: 1, radius: 2, desc: 'Removes 8 kW of heat from GPUs within 2 tiles.' },
+    chiller: { name: 'Industrial Chiller', cat: 'cooling', cost: 80000, cooling: 120, power: 8, radius: 3, minOffice: 2, desc: 'Removes 120 kW of heat from GPUs within 3 tiles.' },
+    liquid: { name: 'Liquid Cooling Loop', cat: 'cooling', cost: 900000, cooling: 1200, power: 40, radius: 4, tech: 'liquid_cooling', desc: 'Removes 1.2 MW of heat from GPUs within 4 tiles by piping coolant to the chips.' },
+    immersion: { name: 'Immersion Tank', cat: 'cooling', size: 2, cost: 36e6, cooling: 40000, power: 1000, radius: 4, tech: 'immersion', desc: 'Removes 40 MW of heat from GPUs within 4 tiles. The servers take a bath. Takes 2×2 tiles.' },
 
     battery: { name: 'Battery Wall', cat: 'power', cost: 12000, powerCap: 15, desc: '+15 kW capacity. Also rides out short power outages.' },
     substation: { name: 'Substation', cat: 'power', cost: 500000, powerCap: 800, minOffice: 2, desc: '+800 kW capacity from a dedicated grid hookup.' },
-    turbine: { name: 'Gas Turbine', cat: 'power', cost: 12e6, powerCap: 15000, minOffice: 3, desc: '+15 MW of on-site generation.' },
-    smr: { name: 'Modular Reactor', cat: 'power', cost: 150e6, powerCap: 120000, tech: 'nuclear', desc: '+120 MW of steady nuclear power.' },
+    turbine: { name: 'Gas Turbine', cat: 'power', size: 2, cost: 48e6, powerCap: 60000, minOffice: 3, desc: '+60 MW of on-site generation. Takes 2×2 tiles.' },
+    smr: { name: 'Modular Reactor', cat: 'power', size: 2, cost: 600e6, powerCap: 480000, tech: 'nuclear', desc: '+480 MW of steady nuclear power. Takes 2×2 tiles.' },
 
-    plant: { name: 'Potted Plant', cat: 'comfort', cost: 200, decor: 1, desc: 'Morale +. It needs very little and asks for less.' },
-    coffee: { name: 'Espresso Machine', cat: 'comfort', cost: 3500, decor: 4, desc: 'Morale ++. Converts beans into research.' },
-    couch: { name: 'Couch', cat: 'comfort', cost: 2500, decor: 3, desc: 'Morale ++. For deep thinking and shallow naps.' },
-    arcade: { name: 'Arcade Cabinet', cat: 'comfort', cost: 9000, decor: 6, desc: 'Morale +++. Someone keeps setting the high score at 4am.' },
-    nap_pod: { name: 'Nap Pod', cat: 'comfort', cost: 25000, decor: 10, minOffice: 2, desc: 'Morale ++++. Sleep is the best regularizer.' },
+    plant: { name: 'Potted Plant', cat: 'comfort', cost: 200, decor: 1, radius: 3, desc: 'Comfort +1 for desks within 3 tiles. It needs very little and asks for less.' },
+    coffee: { name: 'Espresso Machine', cat: 'comfort', cost: 3500, decor: 4, radius: 3, desc: 'Comfort +4 for desks within 3 tiles. Converts beans into research.' },
+    couch: { name: 'Couch', cat: 'comfort', cost: 2500, decor: 3, radius: 3, desc: 'Comfort +3 for desks within 3 tiles. For deep thinking and shallow naps.' },
+    arcade: { name: 'Arcade Cabinet', cat: 'comfort', cost: 9000, decor: 6, radius: 3, desc: 'Comfort +6 for desks within 3 tiles. Someone keeps setting the high score at 4am.' },
+    nap_pod: { name: 'Nap Pod', cat: 'comfort', cost: 25000, decor: 10, radius: 3, minOffice: 2, desc: 'Comfort +10 for desks within 3 tiles. Sleep is the best regularizer.' },
   };
 
   const ITEM_CATS = [
@@ -88,13 +88,13 @@
     { id: 'rlhf', name: 'RLHF', cost: 50, req: ['scaling_laws'], tier: 1, desc: 'New models +12% appeal. Unlocks human feedback data.', appeal: 0.12 },
     { id: 'quantization', name: 'Quantization', cost: 150, req: [], tier: 2, desc: '+40% users served per GPU.', infer: 0.4 },
     { id: 'distributed', name: 'Distributed Training', cost: 250, req: ['scaling_laws'], tier: 2, desc: 'Unlocks Medium (70B) models.' },
-    { id: 'code_models', name: 'Code Generation', cost: 300, req: ['rlhf'], tier: 2, desc: 'New models earn +15% per subscriber. Brings enterprise deals.', arpu: 0.15 },
+    { id: 'code_models', name: 'Code Generation', cost: 300, req: ['rlhf'], tier: 2, desc: 'Unlocks the Developer API product. Brings enterprise deals.' },
     { id: 'synthetic_data', name: 'Synthetic Data', cost: 350, req: ['distributed'], tier: 2, desc: 'Unlocks synthetic training data.' },
     { id: 'long_context', name: 'Long Context', cost: 400, req: ['distributed'], tier: 2, desc: 'New models +10% appeal.', appeal: 0.1 },
     { id: 'liquid_cooling', name: 'Liquid Cooling', cost: 800, req: [], tier: 3, desc: 'Unlocks the Liquid Cooling Loop.' },
     { id: 'constitutional', name: 'Constitutional AI', cost: 1000, req: ['rlhf'], tier: 3, desc: 'Scandal risk -50%.', safety: 0.5 },
     { id: 'moe', name: 'Mixture of Experts', cost: 1500, req: ['distributed'], tier: 3, desc: 'Unlocks Large (400B) models. +25% users per GPU.', infer: 0.25 },
-    { id: 'multimodal', name: 'Multimodal', cost: 1600, req: ['long_context'], tier: 3, desc: 'New models see images: +18% appeal, +3% capability.', appeal: 0.18, cap: 0.03 },
+    { id: 'multimodal', name: 'Multimodal', cost: 1600, req: ['long_context'], tier: 3, desc: 'Unlocks Image Studio. New models +18% appeal, +3% capability.', appeal: 0.18, cap: 0.03 },
     { id: 'distillation', name: 'Distillation', cost: 1500, req: ['quantization'], tier: 3, desc: '+30% users served per GPU.', infer: 0.3 },
     { id: 'reasoning', name: 'Reasoning Models', cost: 6000, req: ['moe', 'synthetic_data'], tier: 4, desc: 'New models think before answering: +7% capability.', cap: 0.07 },
     { id: 'frontier_scaling', name: 'Frontier Scaling', cost: 6000, req: ['moe'], tier: 4, desc: 'Unlocks Frontier (2T) models.' },
@@ -102,7 +102,7 @@
     { id: 'speculative', name: 'Speculative Decoding', cost: 4000, req: ['distillation'], tier: 4, desc: '+25% users served per GPU.', infer: 0.25 },
     { id: 'interpretability', name: 'Interpretability', cost: 4500, req: ['constitutional'], tier: 4, desc: 'Scandal risk -40%. Regulators like you more.', safety: 0.4 },
     { id: 'immersion', name: 'Immersion Cooling', cost: 5000, req: ['liquid_cooling'], tier: 4, desc: 'Unlocks the Immersion Tank.' },
-    { id: 'agents', name: 'Autonomous Agents', cost: 8000, req: ['reasoning', 'code_models'], tier: 4, desc: 'New models do real work: +40% per subscriber, +4% capability.', arpu: 0.4, cap: 0.04 },
+    { id: 'agents', name: 'Autonomous Agents', cost: 8000, req: ['reasoning', 'code_models'], tier: 4, desc: 'Unlocks the Agents product. New models +4% capability.', cap: 0.04 },
     { id: 'nuclear', name: 'Nuclear Power Deal', cost: 12000, req: ['custom_silicon'], tier: 5, desc: 'Unlocks the Modular Reactor.' },
     { id: 'data_flywheel', name: 'Data Flywheel', cost: 14000, req: ['agents'], tier: 5, desc: 'New models learn from usage: up to +6% capability with more subscribers.' },
     { id: 'ultrascale', name: 'Ultrascale Training', cost: 18000, req: ['frontier_scaling', 'custom_silicon'], tier: 5, desc: 'Unlocks Ultra (10T) models.' },
@@ -156,6 +156,43 @@
     { id: 'ipo', name: 'IPO', dil: 0.1, min: 10e9, reqText: 'OmniBench 80+ and a $150B valuation', req: (s, v) => v.bestCap >= 80 && v.valuation >= 150e9 },
   ];
 
+
+  // Products beyond the chat app. market: share of the chat market size.
+  // infer: serving cost per customer relative to a chat subscriber.
+  const PRODUCTS = [
+    { id: 'api', name: 'Developer API', tech: 'code_models', launch: 250e3, market: 0.03, price: 200, minPrice: 50, maxPrice: 500, infer: 6, desc: 'Developers pay monthly to build on your model. Each one needs more compute than a chat user.' },
+    { id: 'images', name: 'Image Studio', tech: 'multimodal', launch: 2e6, market: 0.3, price: 10, minPrice: 3, maxPrice: 40, infer: 2, desc: 'A picture generator for everyone. Cheap plans and a huge audience.' },
+    { id: 'agents', name: 'Agents', tech: 'agents', launch: 50e6, market: 0.05, price: 300, minPrice: 100, maxPrice: 1000, infer: 10, desc: 'Autonomous assistants that do real work for businesses. Expensive to run, lucrative to sell.' },
+  ];
+
+  const DIFFICULTY = {
+    relaxed: { name: 'Relaxed', cash: 100000, pace: 0.85, desc: 'Rivals move slower and you start with more money.' },
+    normal: { name: 'Normal', cash: 75000, pace: 1, desc: 'The race as designed.' },
+    hard: { name: 'Hard', cash: 50000, pace: 1.22, desc: 'Rivals move faster and money is tight.' },
+  };
+
+  // Kept per browser across runs.
+  const ACHIEVEMENTS = [
+    { id: 'first_light', name: 'First Light', desc: 'Deploy your first model.', check: (s) => !!s.flagshipId },
+    { id: 'garage_done', name: 'Out of the Garage', desc: 'Move into the Downtown Loft.', check: (s) => s.officeLevel >= 1 },
+    { id: 'cool_head', name: 'Cool Head', desc: 'Run 20 or more GPUs with none overheating.', check: (s, v) => v.computeItems >= 20 && v.hotItems === 0 },
+    { id: 'unicorn', name: 'Unicorn', desc: 'Reach a $1B valuation.', check: (s, v) => v.valuation >= 1e9 },
+    { id: 'decacorn', name: 'Decacorn', desc: 'Reach a $10B valuation.', check: (s, v) => v.valuation >= 1e10 },
+    { id: 'number_one', name: 'Number One', desc: 'Top the OmniBench leaderboard.', check: (s) => !!s.flags.wasSota },
+    { id: 'full_house', name: 'Full House', desc: 'Employ 50 people.', check: (s) => s.staff.length >= 50 },
+    { id: 'big_game', name: 'Prime Time', desc: 'Run a Big Game TV ad.', check: (s) => (s.campaignCd.bigad || 0) > 0 },
+    { id: 'open_science', name: 'Open Science', desc: 'Open-source five models.', check: (s) => s.models.filter((m) => m.open).length >= 5 },
+    { id: 'product_line', name: 'Product Line', desc: 'Launch all three extra products.', check: (s) => PRODUCTS.every((p) => s.products && s.products[p.id] && s.products[p.id].live) },
+    { id: 'ipo', name: 'Ringing the Bell', desc: 'Go public.', check: (s) => s.rounds.includes('ipo') },
+    { id: 'hundred_million', name: 'Hundred Million', desc: 'Reach 100 million subscribers.', check: (s) => s.subs >= 1e8 },
+    { id: 'survivor', name: 'Survivor', desc: 'Run out of cash and recover.', check: (s) => !!s.flags.recovered },
+    { id: 'agi', name: 'The Finish Line', desc: 'Build AGI.', check: (s) => !!(s.over && s.over.win) },
+    { id: 'safe_hands', name: 'Safe Hands', desc: 'Build AGI with alignment of 70 or more.', check: (s) => !!(s.over && s.over.win && s.over.ending === 'aligned') },
+    { id: 'speedrun', name: 'Speedrun', desc: 'Build AGI before 2030.', check: (s) => !!(s.over && s.over.win && s.day < 7 * 365) },
+    { id: 'hard_mode', name: 'Hard Mode Hero', desc: 'Build AGI on Hard.', check: (s) => !!(s.over && s.over.win && s.difficulty === 'hard') },
+    { id: 'daily', name: 'Daily Grinder', desc: 'Finish a daily challenge.', check: (s) => !!(s.over && s.mode === 'daily') },
+  ];
+
   const count = (s, type) => s.items.filter((i) => i.type === type).length;
   const hasSize = (s, id) => s.models.some((m) => m.size === id);
 
@@ -187,7 +224,7 @@
 
   AIT.DATA = {
     START_DATE, OFFICES, ITEMS, ITEM_CATS, ROLES, TECHS, MODEL_SIZES, DATA_SOURCES,
-    RIVALS, CAMPAIGNS, ROUNDS, GOALS, FIRST_NAMES, LAST_NAMES,
+    RIVALS, CAMPAIGNS, ROUNDS, GOALS, FIRST_NAMES, LAST_NAMES, PRODUCTS, DIFFICULTY, ACHIEVEMENTS,
     TECH_BY_ID: Object.fromEntries(TECHS.map((t) => [t.id, t])),
     SIZE_BY_ID: Object.fromEntries(MODEL_SIZES.map((m) => [m.id, m])),
   };

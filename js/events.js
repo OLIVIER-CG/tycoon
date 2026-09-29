@@ -39,7 +39,7 @@
       id: 'ceo_post', cd: 60,
       weight: (s, v) => (v.flagship ? 0.6 : 0),
       run: (s, v) => {
-        if (Math.random() < 0.55) {
+        if (U().random() < 0.55) {
           s.hype = Math.min(100, s.hype + 8);
           return `A famous founder called ${v.flagship.name} "genuinely useful". Hype +8.`;
         }
@@ -118,7 +118,7 @@
       id: 'star', cd: 250, kind: 'good',
       weight: (s) => (s.day > 200 ? 0.3 : 0),
       run: (s) => {
-        const role = Math.random() < 0.6 ? 'researcher' : 'engineer';
+        const role = U().random() < 0.6 ? 'researcher' : 'engineer';
         const c = S().makeCandidate(s, role, U().randi(9, 10));
         c.salary = Math.round(c.salary * 1.3);
         c.star = true;
@@ -163,8 +163,9 @@
       body: (s, p) => `Users tricked ${p.model} into writing a step-by-step guide to "borrowing" a neighbor's wifi. Screenshots are everywhere and journalists want a comment.`,
       choices: (s, p) => [
         {
-          label: 'Patch it and apologize', note: `Costs ${money(p.cost)}, hype -3`,
+          label: 'Patch it and apologize', note: `Costs ${money(p.cost)}, hype -3, alignment +3`,
           run: (s) => {
+            S().align(s, 3);
             s.cash -= p.cost;
             s.month.other += p.cost;
             s.hype = Math.max(0, s.hype - 3);
@@ -172,10 +173,11 @@
           },
         },
         {
-          label: 'Call it a feature', note: 'Hype +6, may upset regulators',
+          label: 'Call it a feature', note: 'Hype +6, alignment -8, may upset regulators',
           run: (s) => {
+            S().align(s, -8);
             s.hype = Math.min(100, s.hype + 6);
-            if (Math.random() < 0.5) {
+            if (U().random() < 0.5) {
               S().addEffect(s, 'market', 0.9, 60, 'Regulator scrutiny');
               return 'Regulators were not amused. New scrutiny shrinks the market 10% for 60 days.';
             }
@@ -183,8 +185,9 @@
           },
         },
         {
-          label: 'Say nothing', note: 'Hype -10, lose 5% of subscribers',
+          label: 'Say nothing', note: 'Hype -10, lose 5% of subscribers, alignment -4',
           run: (s) => {
+            S().align(s, -4);
             s.hype = Math.max(0, s.hype - 10);
             s.subs *= 0.95;
             return 'Silence read as guilt. Some subscribers cancelled.';
@@ -210,7 +213,7 @@
         {
           label: 'Fight it in court', note: `55% win. Lose: pay ${money(p.amount * 2.5)}, hype -6`,
           run: (s) => {
-            if (Math.random() < 0.55) {
+            if (U().random() < 0.55) {
               s.hype = Math.min(100, s.hype + 4);
               return 'The judge ruled your training was fair use. Hype +4.';
             }
@@ -264,24 +267,27 @@
       body: (s) => `Lawmakers want the CEO of ${s.company} to testify about AI risk. The cameras will be rolling.`,
       choices: (s, p) => [
         {
-          label: 'Testify and cooperate', note: s.techs.interpretability ? 'Hype +8 (your interpretability work impresses)' : 'Hype +4, sentiment dips slightly',
+          label: 'Testify and cooperate', note: (s.techs.interpretability ? 'Hype +8 (your interpretability work impresses)' : 'Hype +4, sentiment dips slightly') + ', alignment +6',
           run: (s) => {
+            S().align(s, 6);
             s.hype = Math.min(100, s.hype + (s.techs.interpretability ? 8 : 4));
             s.sentiment = Math.max(0.45, s.sentiment - 0.03);
             return 'Your calm testimony earned respect on both sides of the aisle.';
           },
         },
         {
-          label: 'Hire lobbyists', note: `Costs ${money(p.lobby)}`,
+          label: 'Hire lobbyists', note: `Costs ${money(p.lobby)}, alignment -4`,
           run: (s) => {
+            S().align(s, -4);
             s.cash -= p.lobby;
             s.month.other += p.lobby;
             return 'The proposed AI bill quietly stalled in committee.';
           },
         },
         {
-          label: 'Skip the hearing', note: 'Hype -8, market -15% for 120 days',
+          label: 'Skip the hearing', note: 'Hype -8, market -15% for 120 days, alignment -10',
           run: (s) => {
+            S().align(s, -10);
             s.hype = Math.max(0, s.hype - 8);
             S().addEffect(s, 'market', 0.85, 120, 'New AI rules');
             return 'Lawmakers passed strict new rules. Adoption slows for a while.';
@@ -352,8 +358,9 @@
       body: (s, p) => `A struggling social network offers ten years of posts for training, for ${money(p.cost)}. It would make your next model about 3% smarter.`,
       choices: (s, p) => [
         {
-          label: 'Buy the data', note: `Costs ${money(p.cost)}`,
+          label: 'Buy the data', note: `Costs ${money(p.cost)}, alignment -3`,
           run: (s) => {
+            S().align(s, -3);
             s.cash -= p.cost;
             s.month.data += p.cost;
             s.flags.dataDeal = true;
@@ -361,6 +368,123 @@
           },
         },
         { label: 'Decline', note: 'No thanks', run: () => null },
+      ],
+    },
+
+    // ---------- rivals that act ----------
+    {
+      id: 'free_tier', cd: 300, kind: 'warn',
+      weight: (s, v) => (s.day > 300 && v.flagship ? 0.35 : 0),
+      run: (s) => {
+        const r = U().pick(closedRivals(s));
+        r.boost = { mult: 1.3, until: s.day + 60 };
+        return `${S().RIVAL_BY_ID[r.id].name} made its model free for two months. Expect some of your users to wander off.`;
+      },
+    },
+    {
+      id: 'price_war', cd: 400, modal: true, kind: 'warn',
+      weight: (s, v) => (v.flagship && s.share > 0.12 && s.day > 400 ? 0.5 : 0),
+      make: (s, v) => {
+        const r = U().pick(closedRivals(s));
+        r.boost = { mult: 1.4, until: s.day + 120 };
+        return { rival: r.id, cost: Math.max(25000, Math.round(v.mrr * 0.5 / 1000) * 1000), price: Math.max(5, Math.round(s.price * 0.75)) };
+      },
+      title: () => 'Price war',
+      body: (s, p) => `${S().RIVAL_BY_ID[p.rival].name} just cut its prices by 40% to take your users. The cut lasts about four months.`,
+      choices: (s, p) => [
+        {
+          label: 'Match their price', note: `Your price drops to $${p.price}/mo. You keep more users but earn less from each`,
+          run: (s) => {
+            S().actions.setPrice(s, p.price);
+            return `You cut your price to $${p.price}/mo.`;
+          },
+        },
+        {
+          label: 'Answer with a campaign', note: `Costs ${money(p.cost)}, hype +10`,
+          run: (s) => {
+            s.cash -= p.cost;
+            s.month.marketing += p.cost;
+            s.hype = Math.min(100, s.hype + 10);
+            return 'Your campaign reminded everyone why they pay for your model.';
+          },
+        },
+        { label: 'Hold your price', note: 'Some users will leave for a while', run: () => 'You held your price and waited it out.' },
+      ],
+    },
+    {
+      id: 'rival_suit', cd: 500, modal: true, kind: 'bad',
+      weight: (s, v) => (v.flagship && v.topRival && v.flagship.cap > v.topRival.cap && s.day > 600 ? 0.4 : 0),
+      make: (s, v) => {
+        const r = closedRivals(s).reduce((a, x) => (x.cap > a.cap ? x : a));
+        return { rival: r.id, amount: Math.round(U().clamp(v.valuation * 0.004, 1e6, 5e9) / 1000) * 1000 };
+      },
+      title: () => 'Patent lawsuit',
+      body: (s, p) => `${S().RIVAL_BY_ID[p.rival].name} says your training method copies one of its patents and wants ${money(p.amount)}. It looks like a way to slow you down.`,
+      choices: (s, p) => [
+        {
+          label: 'Settle', note: `Pay ${money(p.amount)}`,
+          run: (s) => {
+            s.cash -= p.amount;
+            s.month.other += p.amount;
+            return `You settled with ${S().RIVAL_BY_ID[p.rival].name}.`;
+          },
+        },
+        {
+          label: 'Fight it', note: `50% win and hype +4. Lose: pay ${money(p.amount * 3)}`,
+          run: (s) => {
+            if (U().random() < 0.5) {
+              s.hype = Math.min(100, s.hype + 4);
+              return 'The court threw the case out. The press loved it.';
+            }
+            s.cash -= p.amount * 3;
+            s.month.other += p.amount * 3;
+            return `You lost the patent case and paid ${money(p.amount * 3)}.`;
+          },
+          kind: 'warn',
+        },
+      ],
+    },
+
+    // ---------- regulation ----------
+    {
+      id: 'ai_act', cd: 99999, modal: true, kind: 'warn',
+      weight: (s, v) => (v.bestCap >= 45 && s.day > 900 ? 0.6 : 0),
+      make: (s, v) => ({ lobby: Math.round(U().clamp(v.valuation * 0.003, 2e6, 1e9) / 1000) * 1000 }),
+      title: () => 'The AI Safety Act',
+      body: () => 'Lawmakers propose audits for every frontier model before release. The big labs are split, and everyone wants to know where you stand.',
+      choices: (s, p) => [
+        {
+          label: 'Support it publicly', note: 'Alignment +12, hype +3, audits slow the market 5% for a year',
+          run: (s) => {
+            S().align(s, 12);
+            s.hype = Math.min(100, s.hype + 3);
+            S().addEffect(s, 'market', 0.95, 365, 'AI Safety Act audits');
+            return 'The AI Safety Act passed with your support. Audits are now part of every launch.';
+          },
+        },
+        {
+          label: 'Lobby against it', note: `Costs ${money(p.lobby)}, alignment -6, may still pass`,
+          run: (s) => {
+            S().align(s, -6);
+            s.cash -= p.lobby;
+            s.month.other += p.lobby;
+            if (U().random() < 0.5) return 'Your lobbyists killed the bill. Safety researchers are not happy with you.';
+            S().addEffect(s, 'market', 0.92, 180, 'AI Safety Act');
+            return 'The bill passed anyway, and lawmakers remember who fought it.';
+          },
+          kind: 'warn',
+        },
+        {
+          label: 'Stay quiet', note: 'Alignment -3, it will probably pass',
+          run: (s) => {
+            S().align(s, -3);
+            if (U().random() < 0.7) {
+              S().addEffect(s, 'market', 0.9, 180, 'AI Safety Act');
+              return 'The AI Safety Act passed. Compliance slows adoption for a while.';
+            }
+            return 'The bill stalled without you.';
+          },
+        },
       ],
     },
   ];

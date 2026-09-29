@@ -41,6 +41,13 @@
     pct(x, dp = 0) {
       return (x * 100).toFixed(dp) + '%';
     },
+    // real time spent playing
+    dur(ms) {
+      const min = Math.round((ms || 0) / 60000);
+      if (min < 1) return 'under a minute';
+      if (min < 60) return min + ' min';
+      return Math.floor(min / 60) + ' h ' + String(min % 60).padStart(2, '0') + ' min';
+    },
   });
   const money = fmt.money;
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -58,6 +65,7 @@
     overShown: false,
     placeWarnAt: 0,
     chapters: [],
+    ng: { mode: 'standard', difficulty: 'normal' },
   };
   const $ = (id) => document.getElementById(id);
   const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -106,14 +114,27 @@
   }
 
   function statLine(d) {
-    if (d.pf) return `${fmt.pf(d.pf)} · ${fmt.kw(d.power)}`;
-    if (d.cooling) return `cools ${fmt.kw(d.cooling)}`;
-    if (d.powerCap) return `+${fmt.kw(d.powerCap)}`;
+    const big = d.size > 1 ? ` · ${d.size}×${d.size}` : '';
+    if (d.pf) return `${fmt.pf(d.pf)} · ${fmt.kw(d.power)}${big}`;
+    if (d.cooling) return `${fmt.kw(d.cooling)} · reach ${d.radius}${big}`;
+    if (d.powerCap) return `+${fmt.kw(d.powerCap)}${big}`;
     if (d.seats) return `seats ${d.seats}`;
-    if (d.rpBonus) return `+3% research`;
-    if (d.decor) return `morale +${d.decor}`;
+    if (d.rpBonus) return `+${Math.round(d.rpBonus * 100)}% RP · reach ${d.radius}`;
+    if (d.decor) return `comfort +${d.decor} · reach ${d.radius}`;
     return '';
   }
+
+  // every technology the AGI Blueprint depends on, directly or not
+  const AGI_PATH = (() => {
+    const need = new Set();
+    const walk = (id) => {
+      if (need.has(id)) return;
+      need.add(id);
+      D.TECH_BY_ID[id].req.forEach(walk);
+    };
+    walk('agi_theory');
+    return need;
+  })();
 
   // ---------- tabs ----------
   const TABS = {
@@ -151,7 +172,7 @@
       <section class="card">
         <div class="row between"><div><div class="eyebrow">Your office</div><h3>${o.name}</h3></div><span class="tag mono">${o.size}×${o.size}</span></div>
         ${meter('Power draw', v.power, v.powerCap, fmt.kw)}
-        ${meter('Heat vs cooling', v.heat, v.cooling, fmt.kw, 0.85, 'heat')}
+        ${heatBlock(s, v)}
         ${Progress.has(s, 'cat:office') ? meter('Desks used', s.staff.length, v.seats, (n) => n, 1.01) : ''}
         <p class="small muted">Compute ${fmt.pf(v.effPF)} usable of ${fmt.pf(v.pf)} · rent ${money(o.rent)}/mo · power bill ${money(v.powerCostDay * 30)}/mo</p>
         ${nextHtml}
@@ -178,6 +199,16 @@
         ${tool ? '<button class="btn ghost" data-act="notool">Done</button>' : ''}
       </div>
       <p class="small muted">${locked.length > 1 ? `${locked.length - 1} more to discover as you grow. ` : ''}${Object.keys(D.ITEMS).some((t) => Sim.itemCost(s, t) !== D.ITEMS[t].cost) ? '* Hardware prices are moving with the market right now.' : ''}</p>`;
+  }
+
+  // Heat is local, so show how many GPUs are too hot rather than one total.
+  function heatBlock(s, v) {
+    const n = v.computeItems, hot = v.hotItems;
+    const cls = hot === 0 ? 'ok' : v.thermal < 0.85 ? 'bad' : 'warn';
+    const txt = !n ? 'No GPUs yet' : hot === 0 ? `All ${n} cool` : `${hot} of ${n} overheating`;
+    const lost = v.pf > 0 ? 1 - v.thermal : 0;
+    return `<div class="meter ${cls}" data-coach="heat"><div class="meter-top"><span>GPU heat</span><span class="mono">${txt}</span></div>${bar(n ? 1 - hot / n : 0)}</div>
+      <p class="small muted">${hot ? `Hot GPUs glow red and slow down, costing you ${lost < 0.01 ? 'under 1%' : fmt.pct(lost)} of your compute. ` : ''}Each cooler only reaches GPUs inside its square: place one and the blue square shows where. The building itself cools ${fmt.kw(v.office.cooling)}, shared by every GPU.</p>`;
   }
 
   // ---------- effects, spelled out ----------
@@ -370,8 +401,9 @@
         <div class="row between"><div><div class="eyebrow">Research points</div><div class="big mono">${Math.floor(s.rp).toLocaleString('en-US')} RP</div></div>
         <div class="right small"><div class="mono">+${v.rpDay.toFixed(1)}/day</div></div></div>
         <div class="mood-parts small"><span>people +${v.rpStaff.toFixed(1)}</span><span>idle GPUs +${v.rpCompute.toFixed(1)}</span><span>${v.boards ? `whiteboards +${Math.round(v.boardBonus * 100)}%` : 'no whiteboards'}</span></div>
-        <p class="small muted">Researchers earn most of your RP. Skill counts: a skill-6 researcher makes about 3× what a skill-2 one does. Whiteboards add 3% each.</p>
+        <p class="small muted">Researchers earn most of your RP. Skill counts: a skill-6 researcher makes about 3× what a skill-2 one does. Each whiteboard within 2 tiles of a researcher's desk adds 8% to what that person makes, up to 40%.</p>
       </section>
+      ${agiPathCard(s)}
       ${tiers
         .map(
           (tier) => `<h3 class="section-title">${names[tier]}</h3><div class="list">${D.TECHS.filter((t) => t.tier === tier)
@@ -379,8 +411,8 @@
               const done = !!s.techs[t.id];
               const reqOk = t.req.every((r) => s.techs[r]);
               const missing = t.req.filter((r) => !s.techs[r]).map((r) => D.TECH_BY_ID[r].name);
-              return `<div class="tech${done ? ' done' : ''}${!reqOk ? ' locked' : ''}">
-                <div class="grow"><div class="name">${t.name}</div><div class="small muted">${t.desc}</div>
+              return `<div class="tech${done ? ' done' : ''}${!reqOk ? ' locked' : ''}${AGI_PATH.has(t.id) ? ' agi-path' : ''}">
+                <div class="grow"><div class="name">${t.name}${AGI_PATH.has(t.id) && !done ? ' <span class="tag path">Path to AGI</span>' : ''}</div><div class="small muted">${t.desc}</div>
                 ${!done && reqOk ? bar(Math.min(1, s.rp / t.cost), 'thin') : ''}
                 ${!reqOk ? `<div class="small lock-note">Needs ${missing.join(', ')}</div>` : ''}</div>
                 <div class="actions">${done ? '<span class="tag ok">Done</span>' : `<button class="btn small${reqOk && s.rp >= t.cost ? ' primary' : ''}" data-act="research" data-id="${t.id}"${disabled(!reqOk || s.rp < t.cost)}>${t.cost.toLocaleString('en-US')} RP</button>`}</div>
@@ -390,6 +422,19 @@
         )
         .join('')}
       ${hidden ? `<p class="small muted">${hidden} more technologies are waiting further down the road.</p>` : ''}`;
+  }
+
+  function agiPathCard(s) {
+    const all = [...AGI_PATH];
+    const done = all.filter((id) => s.techs[id]).length;
+    const next = D.TECHS.filter((t) => AGI_PATH.has(t.id) && !s.techs[t.id] && t.req.every((r) => s.techs[r])).sort((a, b) => a.cost - b.cost)[0];
+    const left = D.TECHS.filter((t) => AGI_PATH.has(t.id) && !s.techs[t.id]).reduce((a, t) => a + t.cost, 0);
+    return `<section class="card agi-card">
+      <div class="row between"><div class="eyebrow">Path to AGI</div><span class="mono small">${done} of ${all.length} done</span></div>
+      ${bar(done / all.length, 'accent')}
+      <p class="small">${done === all.length ? 'The AGI Blueprint is yours. Start the AGI Project in Models.' : `${next ? `Next on the path: <b>${next.name}</b> (${next.cost.toLocaleString('en-US')} RP). ` : ''}About ${left.toLocaleString('en-US')} RP to go.`}</p>
+      <p class="small muted">Technologies tagged Path to AGI lead to the AGI Blueprint. The rest make you faster, richer or safer along the way.</p>
+    </section>`;
   }
 
   function trainPF(s, v) {
@@ -403,6 +448,27 @@
     const d = {};
     for (const src of D.DATA_SOURCES) d[src.id] = !!ui.train.data[src.id] && (!src.tech || !!s.techs[src.tech]);
     return d;
+  }
+
+  // How much compute a run needs to finish in a sensible time, and what that means in hardware.
+  function planner(s, v, size) {
+    const days = size.id === 'agi' ? 300 : 150;
+    const needPF = size.pfdays / days / v.trainMult;
+    const have = trainPF(s, v);
+    if (have >= needPF) return `<p class="small ok-text">You have enough compute to finish a ${size.name} in under ${days} days.</p>`;
+    const open = Object.keys(D.ITEMS).filter((t) => D.ITEMS[t].pf && !Sim.itemLocked(s, t));
+    const best = open.sort((a, b) => D.ITEMS[b].pf - D.ITEMS[a].pf)[0];
+    const d = D.ITEMS[best];
+    const each = d.pf * (v.computeMult || 1);
+    const n = Math.ceil((needPF - have) / each);
+    const cost = Sim.itemCost(s, best) * n;
+    const power = n * d.power;
+    const spare = Math.max(0, v.powerCap - v.power);
+    return `<div class="planner small">
+      <div class="eyebrow">Planner</div>
+      <p>To finish a ${size.name} in ${days} days you need about <b class="mono">${fmt.pf(needPF)}</b> for training. You have <b class="mono">${fmt.pf(have)}</b>.</p>
+      <p>That is roughly <b>${n.toLocaleString('en-US')} more ${d.name}${n === 1 ? '' : 's'}</b> (${money(cost)}), drawing ${fmt.kw(power)}${power > spare ? `, and you only have ${fmt.kw(spare)} of power to spare` : ''}. Each one also needs cooling within reach.${n * (d.size || 1) ** 2 > 0.6 * v.office.size ** 2 ? ' That will not fit in this office: a bigger one holds faster hardware.' : ''}</p>
+    </div>`;
   }
 
   function renderModels(s, v) {
@@ -467,6 +533,7 @@
             <div><dt>Time at current compute</dt><dd class="mono${days > 365 ? ' bad-text' : days > 150 ? ' warn-text' : ''}">${days === Infinity ? 'no spare compute' : days > 3650 ? '10+ years' : days + ' days'}</dd></div>
           </dl>
           <p class="small muted">Speed: ${fmt.pf(trainPF(s, v))} for training × ${v.trainMult.toFixed(2)} from engineers and research = ${fmt.num(rate)} PF-days a day. This model needs ${fmt.pfdays(size.pfdays)}.</p>
+          ${planner(s, v, size)}
           ${days > 365 ? `<p class="lock-note">Too slow to start: ${days === Infinity ? 'you have no spare compute' : `it would take ${days > 3650 ? 'over 10 years' : days + ' days'}`}. Add GPUs in Build › Compute${s.officeLevel === 0 ? ' (a bigger office holds much faster ones)' : ''}, or pick a smaller model.</p>` : days > 150 ? `<p class="small warn-text">This run will take ${days} days. More GPUs would make it much faster.</p>` : ''}
           <button class="btn primary wide" data-act="start-train"${disabled(s.cash < cost || days > 365)}>Start training · ${money(cost)}</button>
         </section>`;
@@ -522,6 +589,7 @@
         <input id="price" type="range" min="5" max="60" step="1" value="${s.price}" data-input="price">
         <p class="small muted">Each subscriber pays ${money(v.arpu || s.price)}/mo including add-ons. Cheaper plans win more users, and more users need more compute.</p>
       </section>
+      ${renderProducts(s, v)}
       <section class="card">
         <div class="row between"><div class="eyebrow">Hype</div><span class="mono">${Math.round(s.hype)}/100</span></div>
         ${bar(s.hype / 100, 'accent')}
@@ -532,6 +600,39 @@
       ${lockedCamps ? `<p class="small muted">Bigger campaigns open up as your office grows (${lockedCamps} more).</p>` : ''}
       ${s.contracts.length || s.officeLevel >= 2 || s.techs.code_models ? `<h3 class="section-title">Enterprise contracts</h3>
       <div class="list">${contracts || '<p class="small muted">No contracts yet. Companies will reach out once your model can write code or is good enough.</p>'}</div>` : ''}`;
+  }
+
+  // Extra product lines: each has its own market, price and compute bill.
+  function renderProducts(s, v) {
+    const open = D.PRODUCTS.filter((p) => s.techs[p.tech]);
+    if (!open.length) return '';
+    const teaser = D.PRODUCTS.find((p) => !s.techs[p.tech]);
+    const cards = open
+      .map((pd) => {
+        const st = s.products[pd.id], pv = v.products[pd.id];
+        const step = pd.maxPrice >= 300 ? 10 : 1;
+        if (!st.live) {
+          return `<div class="product">
+            <div class="grow"><div class="name">${pd.name}</div><div class="small muted">${pd.desc}</div>
+            <div class="small mono">starts at $${pd.price}/mo · ${fmt.num(v.market * pd.market)} potential customers</div></div>
+            <div class="actions"><button class="btn small primary" data-act="launch" data-id="${pd.id}"${disabled(s.cash < pd.launch || !v.flagship)}>Launch ${money(pd.launch)}</button></div>
+          </div>`;
+        }
+        return `<div class="product live">
+          <div class="row between"><div class="name">${pd.name} <span class="tag ok">Live</span></div><span class="mono small">${money(pv.revenue)}/mo</span></div>
+          <dl class="kv small">
+            <div><dt>Customers</dt><dd class="mono">${fmt.num(pv.users)} → ${fmt.num(pv.target)}</dd></div>
+            <div><dt>Share</dt><dd class="mono">${fmt.pct(pv.share, 1)}</dd></div>
+            <div><dt>Compute</dt><dd class="mono">${fmt.pf(pv.need)}</dd></div>
+          </dl>
+          <label class="slider-label small" for="pp-${pd.id}">Price <b class="mono">$${st.price}/mo</b></label>
+          <input id="pp-${pd.id}" type="range" min="${pd.minPrice}" max="${pd.maxPrice}" step="${step}" value="${st.price}" data-input="pprice" data-id="${pd.id}">
+        </div>`;
+      })
+      .join('');
+    return `<h3 class="section-title">Products</h3>
+      <div class="list">${cards}</div>
+      <p class="small muted">Every product runs on your live model, so a better model sells all of them. Their customers need compute too, served from the same GPUs as chat.${teaser ? ` Next: ${teaser.name} (research ${D.TECH_BY_ID[teaser.tech].name}).` : ''}</p>`;
   }
 
   function renderFinance(s, v) {
@@ -561,6 +662,7 @@
       ? `<table class="pl small"><caption class="eyebrow">${last.label}</caption>
           <tr><th>Subscriptions</th><td class="mono">${money(last.detail.rev)}</td></tr>
           <tr><th>Enterprise</th><td class="mono">${money(last.detail.crev)}</td></tr>
+          ${last.detail.prev ? `<tr><th>Products</th><td class="mono">${money(last.detail.prev)}</td></tr>` : ''}
           <tr><th>Salaries</th><td class="mono neg">${money(-last.detail.salaries)}</td></tr>
           <tr><th>Rent</th><td class="mono neg">${money(-last.detail.rent)}</td></tr>
           <tr><th>Power</th><td class="mono neg">${money(-last.detail.power)}</td></tr>
@@ -589,6 +691,24 @@
       ${next ? (laterRounds ? `<p class="small muted">${laterRounds} more rounds after this one, all the way to an IPO.</p>` : '') : '<p class="small muted">You are a public company. Keep growing.</p>'}
       <h3 class="section-title">Last month</h3>
       <section class="card">${pl}</section>`;
+  }
+
+  const ENDINGS = {
+    aligned: ['Trusted', 'If you reached AGI today, the world would trust it.'],
+    uneasy: ['Uneasy', 'If you reached AGI today, regulators and the public would be nervous about it.'],
+    reckless: ['Reckless', 'If you reached AGI today, nobody would be sure what you had built. Including you.'],
+  };
+  function alignmentCard(s, v) {
+    const a = v.alignment;
+    const [name, text] = ENDINGS[a.ending];
+    const sign = (n) => (n >= 0 ? '+' : '−') + Math.abs(n);
+    return `<section class="card">
+      <div class="row between"><div class="eyebrow">Alignment</div><span class="mono">${a.total}/100 · ${name}</span></div>
+      ${bar(a.total / 100, a.ending === 'aligned' ? 'ok' : a.ending === 'uneasy' ? 'warn' : 'bad')}
+      <div class="mood-parts small"><span>base ${a.base}</span><span>safety research ${sign(a.research)}</span><span>safety team ${sign(a.team)}</span><span class="${a.choices < 0 ? 'bad-text' : ''}">your choices ${sign(a.choices)}</span>${a.data ? `<span>human feedback ${sign(a.data)}</span>` : ''}</div>
+      <p class="small">${text}</p>
+      <p class="small muted">70 or more counts as aligned, under 40 as reckless. Safety staff, RLHF, Constitutional AI and Interpretability raise it. So do honest answers when a scandal or a hearing comes up.</p>
+    </section>`;
   }
 
   function renderRace(s, v) {
@@ -620,6 +740,7 @@
           .join('')}</div>
         <p class="small muted">OmniBench runs from 0 to 100. The first lab to reach 100 builds AGI and wins. ${fm ? '' : 'Deploy a model to compete for users.'}</p>
       </section>
+      ${fm ? alignmentCard(s, v) : ''}
       <h3 class="section-title">News</h3>
       <ul class="news">${news}</ul>`;
   }
@@ -637,7 +758,7 @@
     const perDay = v.profitMonth / 30;
     set('hud-cash', `<span class="k">Cash</span><span class="v mono${s.cash < 0 ? ' bad-text' : ''}">${money(s.cash)}</span><span class="d mono ${perDay >= 0 ? 'ok-text' : 'bad-text'}">${perDay >= 0 ? '+' : ''}${money(perDay)}/day</span>`);
     set('hud-subs', `<span class="k">Subscribers</span><span class="v mono">${fmt.num(s.subs)}</span><span class="d mono">${fmt.pct(s.share, 1)} share</span>`);
-    const warn = v.thermal < 1 ? 'hot' : v.powerFactor < 1 ? 'power' : '';
+    const warn = v.thermal < 0.99 ? 'hot' : v.powerFactor < 1 ? 'power' : '';
     set('hud-compute', `<span class="k">Compute</span><span class="v mono${warn ? ' bad-text' : ''}">${fmt.pf(v.effPF)}</span><span class="d mono">${warn === 'hot' ? 'overheating' : warn === 'power' ? 'power limited' : s.training ? 'training' : 'serving'}</span>`);
     set('hud-hype', `<span class="k">Hype</span><span class="v mono">${Math.round(s.hype)}</span>${bar(s.hype / 100, 'accent thin')}`);
     const top = v.topRival;
@@ -645,13 +766,14 @@
     set('hud-val', `<span class="k">Valuation</span><span class="v mono">${money(v.valuation)}</span><span class="d mono">you own ${fmt.pct(s.equity, 0)}</span>`);
 
     const alerts = [];
-    if (v.thermal < 1) alerts.push(['bad', `Overheating: GPUs throttled to ${fmt.pct(v.thermal)}. Add cooling.`, 'build:cooling']);
+    if (v.hotItems > 0 && v.thermal < 0.99) alerts.push([v.thermal < 0.9 ? 'bad' : 'warn', `${v.hotItems} GPU${v.hotItems === 1 ? ' is' : 's are'} overheating (−${fmt.pct(1 - v.thermal)} compute). Put cooling next to the red ones.`, 'build:cooling']);
     if (v.powerFactor < 1) alerts.push(['warn', `Power limit: GPUs running at ${fmt.pct(v.powerFactor)}. Add power.`, 'build:power']);
     if (v.flagship && v.service < 0.95) alerts.push(['bad', `Serving only ${fmt.pct(v.service)} of users. Add compute or train less.`, 'models']);
     if (s.stats.negDays > 0) alerts.push(['bad', `Out of cash: ${90 - s.stats.negDays} days to bankruptcy.`, 'finance']);
     if (s.offer) alerts.push(['good', `${s.offer.name} term sheet is waiting.`, 'finance']);
     if (!s.training && !s.models.length) alerts.push(['info', 'Start your first training run.', 'models']);
     else if (!v.flagship && s.models.length) alerts.push(['info', 'You have a model. Deploy it to get users.', 'models']);
+    if (v.idleDays > 20 && !s.over) alerts.push(['warn', `Your GPUs have not trained anything for ${v.idleDays} days. Start a run.`, 'models']);
     const nextRound = D.ROUNDS[s.rounds.length];
     if (nextRound && !s.offer && s.roundCd <= s.day && nextRound.req(s, v)) alerts.push(['good', `Investors will take your ${nextRound.name} pitch.`, 'finance']);
     // during the tutorial Mira is the guide, so only real problems show here
@@ -690,14 +812,33 @@
       return;
     }
     const d = D.ITEMS[it.type];
-    const desks = s.items.filter((i) => D.ITEMS[i.type].seats).sort((a, b) => a.id - b.id);
-    const idx = desks.indexOf(it);
-    const p = idx >= 0 ? s.staff[idx] : null;
+    const v = Sim.derive(s);
+    let p = null;
+    for (const [pid, desk] of Sim.seating(s)) if (desk.id === it.id) p = s.staff.find((x) => x.id === pid);
+    const notes = [];
+    if (p) {
+      const seat = v.seatInfo.get(p.id) || { board: 0, comfort: 0 };
+      notes.push(`<b>${esc(p.name)}</b> · ${D.ROLES[p.role].name} · skill ${p.skill} · morale ${Math.round(p.morale)}%`);
+      notes.push(`Adds ${describeImpact(s, v, p.role, Sim.impact(s, v, { remove: p.id }), false, p.salary).effects.join(' · ')}`);
+      notes.push(`Comfort here +${Math.round(seat.comfort)}${p.role === 'researcher' ? ` · whiteboards +${Math.round(seat.board * 100)}% research` : ''}`);
+    } else if (d.seats) notes.push('<span class="muted">Empty desk. Hire someone in Team.</span>');
+    const heat = v.itemHeat.get(it.id);
+    if (heat != null) notes.push(heat < 1 ? `<span class="bad-text">Overheating: running at ${fmt.pct(heat)} speed.</span> Put a cooler within reach.` : '<span class="ok-text">Running cool.</span>');
+    const cool = v.coolers.get(it.id);
+    if (cool) notes.push(cool.gpus ? `Cools ${cool.gpus} GPU${cool.gpus === 1 ? '' : 's'} in reach · load ${fmt.pct(cool.load)}${cool.load > 1 ? ' <span class="bad-text">(overloaded: add another cooler nearby)</span>' : ''}` : 'No GPUs in reach. Move it next to your hardware.');
+    if (d.rpBonus) {
+      const n = s.staff.filter((x) => x.role === 'researcher' && v.seatInfo.get(x.id) && v.seatInfo.get(x.id).desk && Sim.gap(it, v.seatInfo.get(x.id).desk) <= d.radius).length;
+      notes.push(`${n} researcher${n === 1 ? '' : 's'} within ${d.radius} tiles`);
+    }
+    if (d.decor) {
+      const n = s.staff.filter((x) => v.seatInfo.get(x.id) && v.seatInfo.get(x.id).desk && Sim.gap(it, v.seatInfo.get(x.id).desk) <= d.radius).length;
+      notes.push(`${n} desk${n === 1 ? '' : 's'} within ${d.radius} tiles`);
+    }
     const html = `<img src="${AIT.Render.icon(it.type)}" alt="" width="48" height="48">
       <div class="grow"><div class="name">${d.name}</div><div class="small muted">${d.desc}</div>
-      ${p ? `<div class="small"><b>${esc(p.name)}</b> · ${D.ROLES[p.role].name} · skill ${p.skill} · morale ${Math.round(p.morale)}%</div><div class="small">Adds ${describeImpact(s, Sim.derive(s), p.role, Sim.impact(s, Sim.derive(s), { remove: p.id }), false, p.salary).effects.join(' · ')}</div>` : d.seats ? '<div class="small muted">Empty desk. Hire someone in Team.</div>' : ''}
-      <div class="small mono">${statLine(d)}</div></div>
-      <div class="actions"><button class="btn small" data-act="sell-selected">Sell ${money(d.cost * 0.5)}</button><button class="btn small ghost" data-act="close-inspect" aria-label="Close">Close</button></div>`;
+      ${notes.map((n) => `<div class="small">${n}</div>`).join('')}
+      <div class="small mono">${statLine(d)}${it.legacy ? ' · old model (¼ size)' : ''}</div></div>
+      <div class="actions"><button class="btn small" data-act="sell-selected">Sell ${money(Sim.stat(it, 'cost') * 0.5)}</button><button class="btn small ghost" data-act="close-inspect" aria-label="Close">Close</button></div>`;
     if (box.dataset.html !== html) {
       box.innerHTML = html;
       box.dataset.html = html;
@@ -795,30 +936,165 @@
     openModal(
       `<div class="eyebrow">Run report</div>
       <h2>Copy this for Claude</h2>
-      <p>This page can't send the report directly here. Copy it and paste it into your chat with Claude.</p>
+      <p>This copy of the game can't send the report on its own. Copy it and paste it into a chat with Claude, or send it to whoever shared the game with you.</p>
       <textarea id="report-text" class="report-text" readonly>${esc(text)}</textarea>
       <div class="row gap"><button class="btn primary" data-modal="copy-report">Copy report</button><button class="btn ghost" data-modal="close">Close</button></div>`,
       'menu',
     );
   }
 
+  const ENDING_TITLES = { aligned: 'AGI, done right', uneasy: 'AGI, with questions', reckless: 'AGI, at any cost' };
+  const modeLabel = (s) => [s.mode === 'daily' ? `Daily challenge ${dailyLabel(s.seed)}` : s.mode === 'sandbox' ? 'Sandbox' : null, s.mode === 'daily' ? null : D.DIFFICULTY[s.difficulty || 'normal'].name].filter(Boolean).join(' · ');
+
   function showOver(s) {
     const v = Sim.derive(s);
     const win = s.over.win;
+    const title = win ? ENDING_TITLES[s.over.ending] || 'You reached AGI first' : /money/.test(s.over.text) ? 'Out of money' : 'Beaten to AGI';
     openModal(
-      `<div class="eyebrow">${fmt.date(s.day)}</div>
-      <h2>${win ? 'You reached AGI first' : 'Game over'}</h2>
+      `<div class="eyebrow">${fmt.date(s.day)} · ${esc(modeLabel(s))}</div>
+      <h2>${title}</h2>
       <p>${esc(s.over.text)}</p>
       <dl class="kpis">
-        <div><dt>Years played</dt><dd class="mono">${(s.day / 365).toFixed(1)}</dd></div>
+        <div><dt>Years in game</dt><dd class="mono">${(s.day / 365).toFixed(1)}</dd></div>
+        <div><dt>Time played</dt><dd class="mono">${fmt.dur(s.playMs)}</dd></div>
         <div><dt>Best OmniBench</dt><dd class="mono">${v.bestCap.toFixed(1)}</dd></div>
+        <div><dt>Alignment</dt><dd class="mono">${v.alignment.total}/100</dd></div>
         <div><dt>Valuation</dt><dd class="mono">${money(v.valuation)}</dd></div>
         <div><dt>Your stake</dt><dd class="mono">${money(v.netWorth)}</dd></div>
       </dl>
-      <div class="row gap">${win ? '<button class="btn" data-modal="sandbox">Keep playing</button>' : ''}<button class="btn" data-modal="send-run">Send this run to Claude</button><button class="btn primary" data-modal="newgame">New game</button></div>`,
+      ${s.mode === 'daily' ? '<div id="daily-board" class="daily-board small muted">Loading today\'s results…</div>' : ''}
+      <div class="row gap wrap">${win ? '<button class="btn" data-modal="sandbox">Keep playing</button>' : ''}<button class="btn" data-modal="send-run">Send this run to Claude</button><button class="btn primary" data-modal="newgame">New game</button></div>`,
       'over ' + (win ? 'good' : 'bad'),
       false,
     );
+    if (s.mode === 'daily') submitDaily(s, v).then(() => showDailyBoard(s));
+  }
+
+  // ---------- daily challenge: same seed for everyone today ----------
+  const dailySeed = (d = new Date()) => d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+  const dailyLabel = (seed) => (seed ? String(seed).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : '');
+  const DAILY_KEY = 'ai-boom-tycoon-daily';
+  const dailyScore = (r) => (r.win ? 1e6 - r.day : r.bestCap * 100 + Math.log10(1 + r.valuation));
+  const dailyLine = (r) => (r.win ? `AGI on ${fmt.date(r.day)}` : `best score ${r.bestCap.toFixed(1)}`);
+
+  function readLocalDaily() {
+    try {
+      return JSON.parse(localStorage.getItem(DAILY_KEY) || '{}');
+    } catch (e) {
+      return {};
+    }
+  }
+
+  async function submitDaily(s, v) {
+    const entry = { seed: s.seed, company: String(s.company).slice(0, 24), win: !!s.over.win, day: s.day, bestCap: v.bestCap, valuation: Math.round(v.valuation), ending: s.over.ending || null, at: new Date().toISOString() };
+    const local = readLocalDaily();
+    if (!local[s.seed] || dailyScore(entry) > dailyScore(local[s.seed])) {
+      local[s.seed] = entry;
+      try {
+        localStorage.setItem(DAILY_KEY, JSON.stringify(local));
+      } catch (e) {
+        /* storage unavailable */
+      }
+    }
+    const db = await getDb();
+    if (!db || s.flags.dailySent) return;
+    try {
+      await db.doc('daily/' + s.seed + '-' + s.runId).set(entry);
+      s.flags.dailySent = true;
+    } catch (e) {
+      /* viewers without write access still see their local best */
+    }
+  }
+
+  async function showDailyBoard(s) {
+    const box = $('daily-board');
+    if (!box) return;
+    let rows = [];
+    const db = await getDb();
+    if (db) {
+      try {
+        const snap = await db.collection('daily').where('seed', '==', s.seed).limit(500).get();
+        rows = snap.docs.map((d) => d.data()).filter((r) => r && typeof r.day === 'number');
+      } catch (e) {
+        rows = [];
+      }
+    }
+    const mine = readLocalDaily()[s.seed];
+    if (!rows.length) {
+      box.innerHTML = mine ? `Your best today: <b>${esc(dailyLine(mine))}</b>. Come back tomorrow for a new seed.` : '';
+      return;
+    }
+    rows.sort((a, b) => dailyScore(b) - dailyScore(a));
+    const you = rows.findIndex((r) => r.company === s.company && r.day === s.day);
+    box.innerHTML = `<div class="eyebrow">Today's leaderboard · ${rows.length} run${rows.length === 1 ? '' : 's'}</div><ol class="daily-list">${rows
+      .slice(0, 8)
+      .map((r, i) => `<li class="${i === you ? 'you' : ''}"><span>${esc(r.company)}</span><span class="mono">${esc(dailyLine(r))}</span></li>`)
+      .join('')}</ol>${you >= 8 ? `<p>You placed #${you + 1}.</p>` : ''}`;
+  }
+
+  // ---------- achievements, kept per browser ----------
+  const ACH_KEY = 'ai-boom-tycoon-achievements';
+  let achGot = null;
+  function achievements() {
+    if (!achGot) {
+      try {
+        achGot = JSON.parse(localStorage.getItem(ACH_KEY) || '{}');
+      } catch (e) {
+        achGot = {};
+      }
+    }
+    return achGot;
+  }
+  function checkAchievements(s, v) {
+    if (s.mode === 'sandbox') return;
+    const got = achievements();
+    for (const a of D.ACHIEVEMENTS) {
+      if (got[a.id] || !a.check(s, v)) continue;
+      got[a.id] = new Date().toISOString().slice(0, 10);
+      try {
+        localStorage.setItem(ACH_KEY, JSON.stringify(got));
+      } catch (e) {
+        /* storage unavailable */
+      }
+      toast(`Achievement unlocked: ${a.name}`, 'goal');
+    }
+  }
+  function showAchievements() {
+    const got = achievements();
+    const n = D.ACHIEVEMENTS.filter((a) => got[a.id]).length;
+    openModal(
+      `<div class="eyebrow">Achievements · ${n} of ${D.ACHIEVEMENTS.length}</div><h2>Trophy shelf</h2>
+      <ul class="ach-list">${D.ACHIEVEMENTS.map((a) => `<li class="${got[a.id] ? 'got' : ''}"><b>${a.name}</b><span class="small muted">${a.desc}</span>${got[a.id] ? `<span class="mono small">${got[a.id]}</span>` : ''}</li>`).join('')}</ul>
+      <p class="small muted">Achievements are saved in this browser. Sandbox games do not count.</p>
+      <div class="row gap"><button class="btn" data-modal="menu">Back</button><button class="btn primary" data-modal="close">Resume</button></div>`,
+      'menu',
+    );
+  }
+
+  // ---------- the moment the AGI Blueprint lands ----------
+  function showAgiReady(s) {
+    const v = Sim.derive(s);
+    const size = D.SIZE_BY_ID.agi;
+    const rate = Math.max(0, v.effPF * 0.75) * v.trainMult;
+    const days = rate > 0 ? Math.ceil(size.pfdays / rate) : Infinity;
+    const top = v.topRival;
+    openModal(
+      `<div class="eyebrow">${fmt.date(s.day)} · Research complete</div>
+      <h2 class="chapter-title">The AGI Blueprint is done</h2>
+      <p>Your researchers know how to build it. Now you have to actually do it, before ${top ? esc(Sim.RIVAL_BY_ID[top.id].name) + ' (at ' + top.cap.toFixed(1) + ')' : 'anyone else'} gets to 100.</p>
+      <dl class="kpis">
+        <div><dt>Compute needed</dt><dd class="mono">${fmt.pfdays(size.pfdays)}</dd></div>
+        <div><dt>Budget</dt><dd class="mono${s.cash < size.fixedCost ? ' bad-text' : ''}">${money(size.fixedCost)}</dd></div>
+        <div><dt>At 75% of your compute</dt><dd class="mono">${days === Infinity ? 'no compute' : days > 3650 ? '10+ years' : days + ' days'}</dd></div>
+        <div><dt>Alignment</dt><dd class="mono">${v.alignment.total}/100 · ${ENDINGS[v.alignment.ending][0]}</dd></div>
+      </dl>
+      <p class="small">Start the AGI Project in Models. Switch the compute split to Manual while it runs, or serving your users will starve the training run. ${days > 365 ? 'At your current compute it would take too long: build more hardware first.' : ''}</p>
+      <div class="row gap"><button class="btn ghost" data-modal="close">Later</button><button class="btn primary" data-modal="agi-go">Open Models</button></div>`,
+      'chapter reveal sota',
+      false,
+    );
+    sfx('chapter');
+    AIT.Render.celebrate();
   }
 
   const HELP = `
@@ -841,11 +1117,20 @@
       <p>${ch.text}</p>
       <div class="field"><label for="ng-company">Name your company</label><input id="ng-company" maxlength="24" value="Nimbus Labs" autocomplete="off"></div>
       <div class="field"><label for="ng-family">Name your models</label><input id="ng-family" maxlength="12" value="Nova" autocomplete="off"></div>
+      <div class="field"><span class="label">Game</span><div class="seg wide" role="group" aria-label="Game mode">${[['standard', 'Standard'], ['daily', 'Daily'], ['sandbox', 'Sandbox']].map(([id, n]) => `<button class="${ui.ng.mode === id ? 'on' : ''}" data-modal="ng-mode" data-id="${id}">${n}</button>`).join('')}</div></div>
+      <div class="field" id="ng-diff-field"${ui.ng.mode === 'standard' ? '' : ' hidden'}><span class="label">Difficulty</span><div class="seg wide" role="group" aria-label="Difficulty">${Object.entries(D.DIFFICULTY).map(([id, d]) => `<button class="${ui.ng.difficulty === id ? 'on' : ''}" data-modal="ng-diff" data-id="${id}">${d.name}</button>`).join('')}</div></div>
+      <p class="small muted" id="ng-note">${newGameNote()}</p>
       <p class="small muted">Your mentor, Mira, will show you around once you start.</p>
       <div class="row gap">${canContinue ? '<button class="btn" data-modal="close">Back to my game</button>' : ''}<button class="btn primary" data-modal="start">Open the garage</button></div>`,
       'intro chapter',
       canContinue,
     );
+  }
+
+  function newGameNote() {
+    if (ui.ng.mode === 'daily') return `Today's seed is ${dailyLabel(dailySeed())}: everyone gets the same candidates, events and rival moves. Normal difficulty. Your result goes on today's leaderboard.`;
+    if (ui.ng.mode === 'sandbox') return 'Start with $10M, no bankruptcy, and rivals that never quite reach AGI. Build whatever you like. Achievements are off.';
+    return D.DIFFICULTY[ui.ng.difficulty].desc;
   }
 
   function showChapter(s, ch) {
@@ -917,9 +1202,10 @@
 
   function showMenu() {
     openModal(
-      `<div class="eyebrow">Menu</div><h2>${esc(G().s.company)}</h2>
+      `<div class="eyebrow">Menu · ${esc(modeLabel(G().s))} · played ${fmt.dur(G().s.playMs)}</div><h2>${esc(G().s.company)}</h2>
       ${HELP}
-      <div class="row gap wrap"><button class="btn" data-modal="mentor-toggle">Mentor tips: ${AIT.Mentor.enabled(G().s) ? 'on' : 'off'}</button><button class="btn" data-modal="mentor-replay">Replay tutorial</button></div>
+      <div class="row gap wrap"><button class="btn" data-modal="mentor-toggle">Mentor tips: ${AIT.Mentor.enabled(G().s) ? 'on' : 'off'}</button><button class="btn" data-modal="mentor-replay">Replay tutorial</button><button class="btn" data-modal="music-toggle">Music: ${AIT.Sound.music ? 'on' : 'off'}</button></div>
+      <div class="row gap wrap"><button class="btn" data-modal="achievements">Achievements · ${D.ACHIEVEMENTS.filter((a) => achievements()[a.id]).length}/${D.ACHIEVEMENTS.length}</button></div>
       <div class="row gap wrap"><button class="btn" data-modal="send-run">Send this run to Claude</button></div>
       <div class="row gap wrap"><button class="btn" data-modal="save">Save now</button><button class="btn" data-modal="close">Resume</button>${ui.confirm === 'newgame' ? '<button class="btn danger" data-modal="really-new">Yes, start over</button>' : '<button class="btn ghost" data-modal="ask-new">New game</button>'}</div>
       <p class="small muted">The game saves itself every month in this browser.</p>`,
@@ -990,6 +1276,12 @@
         break;
       case 'campaign':
         result(A.campaign(s, id));
+        break;
+      case 'launch':
+        if (result(A.launchProduct(s, id), false)) {
+          sfx('fanfare');
+          AIT.Render.celebrate();
+        }
         break;
       case 'pitch':
         result(A.pitch(s));
@@ -1071,18 +1363,18 @@
     },
     sell(x, y) {
       const s = G().s;
-      const it = s.items.find((i) => i.x === x && i.y === y);
+      const it = Sim.itemAt(s, x, y);
       if (!it) return;
       const r = A.sell(s, it.id);
       if (r.ok) {
-        AIT.Render.float(x, y, '+' + money(r.msg), '#248a5a');
+        AIT.Render.float(it.x, it.y, '+' + money(r.msg), '#248a5a');
         sfx('sell');
       } else toast(r.msg, 'warn');
       renderPanel(true);
     },
     select(x, y) {
       const s = G().s;
-      const it = s.items.find((i) => i.x === x && i.y === y);
+      const it = Sim.itemAt(s, x, y);
       AIT.Render.selected = it ? it.id : null;
       renderInspect(s);
     },
@@ -1124,6 +1416,10 @@
         A.setPrice(s, Number(el.value));
         const lab = el.previousElementSibling && el.previousElementSibling.querySelector('b');
         if (lab) lab.textContent = `$${s.price}/mo`;
+      } else if (el.dataset.input === 'pprice') {
+        A.setProductPrice(s, el.dataset.id, Number(el.value));
+        const lab = el.previousElementSibling && el.previousElementSibling.querySelector('b');
+        if (lab) lab.textContent = `$${s.products[el.dataset.id].price}/mo`;
       } else if (el.dataset.input === 'alloc') {
         A.setAlloc(s, false, Number(el.value) / 100);
         const lab = el.previousElementSibling && el.previousElementSibling.querySelector('b');
@@ -1192,12 +1488,20 @@
         Sim.resolveEvent(g.s, Number(b.dataset.i));
         closeModal();
         renderPanel(true);
+      } else if (what === 'ng-mode' || what === 'ng-diff') {
+        if (what === 'ng-mode') ui.ng.mode = b.dataset.id;
+        else ui.ng.difficulty = b.dataset.id;
+        b.parentElement.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        $('ng-diff-field').hidden = ui.ng.mode !== 'standard';
+        $('ng-note').textContent = newGameNote();
       } else if (what === 'start') {
         const company = ($('ng-company').value || '').trim() || 'Nimbus Labs';
         const family = ($('ng-family').value || '').trim().replace(/\s+/g, '') || 'Nova';
+        const opts = { mode: ui.ng.mode, difficulty: ui.ng.mode === 'standard' ? ui.ng.difficulty : 'normal' };
+        if (opts.mode === 'daily') opts.seed = dailySeed();
         closeModal();
         ui.overShown = false;
-        g.newGame(company, family);
+        g.newGame(company, family, opts);
       } else if (what === 'save') {
         g.save();
         toast('Game saved', 'good');
@@ -1212,7 +1516,7 @@
         sendRun(b);
       } else if (what === 'copy-report') {
         const ta = $('report-text');
-        const done = () => toast('Copied. Paste it into your chat with Claude.', 'good');
+        const done = () => toast('Copied. Paste it into a chat with Claude.', 'good');
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(ta.value).then(done, () => {
             ta.focus();
@@ -1231,6 +1535,18 @@
           toast(r.msg, 'good');
         }
         renderPanel(true);
+      } else if (what === 'music-toggle') {
+        AIT.Sound.unlock();
+        AIT.Sound.toggleMusic();
+        showMenu();
+      } else if (what === 'achievements') {
+        showAchievements();
+      } else if (what === 'menu') {
+        showMenu();
+      } else if (what === 'agi-go') {
+        closeModal();
+        ui.train.size = 'agi';
+        goTo('models');
       } else if (what === 'mentor-toggle') {
         AIT.Mentor.setEnabled(g.s, !AIT.Mentor.enabled(g.s));
         showMenu();
@@ -1271,6 +1587,10 @@
         if (m) showReveal(s, m);
       } else if (ui.chapters.length) showChapter(s, ui.chapters.shift());
       else if (s.events.length) showEvent(s);
+      else if (s.techs.agi_theory && !s.flags.agiPrompted && !s.over) {
+        s.flags.agiPrompted = true;
+        showAgiReady(s);
+      }
       else if (s.over && !s.over.sandbox && !ui.overShown) {
         ui.overShown = true;
         showOver(s);
@@ -1285,6 +1605,7 @@
       if (got.chapter) ui.chapters.push(got.chapter);
       renderHud(s, v);
       renderInspect(s);
+      checkAchievements(s, v);
       AIT.Mentor.check(s, v, !!ui.modal);
     }
     if (now - ui.lastPanel > 400) {

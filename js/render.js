@@ -475,16 +475,22 @@
 
   const freeNeighbors = (N, blocked, x, y) =>
     [[x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]].filter(([a, b]) => a >= 0 && b >= 0 && a < N && b < N && !blocked.has(a + ',' + b));
+  // free tiles next to any tile of an item's footprint
+  function around(N, blocked, it) {
+    const n = AIT.Sim.sizeOf(it), out = new Map();
+    for (let dx = 0; dx < n; dx++) for (let dy = 0; dy < n; dy++) for (const t of freeNeighbors(N, blocked, it.x + dx, it.y + dy)) out.set(t[0] + ',' + t[1], t);
+    return [...out.values()];
+  }
 
   function startWalk(s, N, desk, p) {
-    const blocked = new Set(s.items.map((i) => i.x + ',' + i.y));
+    const blocked = AIT.Sim.occupied(s);
     const home = freeNeighbors(N, blocked, desk.x, desk.y)[0];
     if (!home) return;
     const want = p.founder ? 'break' : p.role;
     const spots = s.items.filter((i) => HANGOUT[i.type] === 'break' || HANGOUT[i.type] === want);
     if (!spots.length) return;
     const target = pickOne(spots);
-    const goals = new Set(freeNeighbors(N, blocked, target.x, target.y).map(([a, b]) => a + ',' + b));
+    const goals = new Set(around(N, blocked, target).map(([a, b]) => a + ',' + b));
     if (!goals.size) return;
     const path = findPath(N, blocked, home, goals);
     if (!path) return;
@@ -860,9 +866,11 @@
     return { x: Math.floor((a + b) / 2), y: Math.floor((a - b) / 2) };
   }
 
-  function itemAt(s, x, y) {
-    return s.items.find((i) => i.x === x && i.y === y) || null;
-  }
+  const itemAt = (s, x, y) => AIT.Sim.itemAt(s, x, y);
+
+  // what a placed item reaches: coolers cool GPUs, boards help researchers, comfort helps desks
+  const RANGE_COL = { cooling: ['rgba(63,150,255,0.10)', 'rgba(63,150,255,0.75)'], office: ['rgba(255,176,0,0.10)', 'rgba(214,140,0,0.8)'], comfort: ['rgba(46,155,103,0.10)', 'rgba(46,155,103,0.8)'] };
+  const rangeOf = (type) => D.ITEMS[type].radius || 0;
 
   // ---------- drawing ----------
   R.draw = function (t, dt, s, v, running) {
@@ -886,48 +894,78 @@
     const h = R.hover;
     const inside = h && h.x >= 0 && h.y >= 0 && h.x < N && h.y < N;
     const hoverItem = inside ? itemAt(s, h.x, h.y) : null;
-    const tileFill = (x, y, fill, stroke) => {
-      const pts = [P(0, 0, x, y, 0), P(0, 0, x + 1, y, 0), P(0, 0, x + 1, y + 1, 0), P(0, 0, x, y + 1, 0)];
+    // a filled rectangle of tiles on the floor, clipped to the office
+    const rectFill = (x, y, w, hgt, fill, stroke, dash) => {
+      const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(N, x + w), y1 = Math.min(N, y + hgt);
+      if (x1 <= x0 || y1 <= y0) return;
+      const pts = [P(0, 0, x0, y0, 0), P(0, 0, x1, y0, 0), P(0, 0, x1, y1, 0), P(0, 0, x0, y1, 0)];
       ctx.lineWidth = 2 / z;
+      if (dash) ctx.setLineDash([6 / z, 4 / z]);
       poly(pts, fill, stroke);
+      ctx.setLineDash([]);
       ctx.lineWidth = 1;
     };
+    const footFill = (it, fill, stroke) => {
+      const n = it.legacy ? 1 : D.ITEMS[it.type].size || 1;
+      rectFill(it.x, it.y, n, n, fill, stroke);
+    };
+    const rangeFill = (it, strong) => {
+      const r = rangeOf(it.type), n = it.legacy ? 1 : D.ITEMS[it.type].size || 1;
+      const col = RANGE_COL[D.ITEMS[it.type].cat] || RANGE_COL.comfort;
+      if (r) rectFill(it.x - r, it.y - r, n + 2 * r, n + 2 * r, strong ? col[0].replace('0.10', '0.16') : col[0], col[1], true);
+    };
+    let ghost = null;
+    const tool = R.tool;
+    if (tool && tool.mode === 'place') {
+      // placing compute shows where your coolers reach; placing a cooler shows the others too
+      const cat = D.ITEMS[tool.type].cat;
+      if (cat === 'compute' || cat === 'cooling') for (const it of s.items) if (D.ITEMS[it.type].cooling) rangeFill(it, false);
+      if (tool.type === 'desk') for (const it of s.items) if (D.ITEMS[it.type].rpBonus || D.ITEMS[it.type].decor) rangeFill(it, false);
+    }
     if (R.selected) {
       const it = s.items.find((i) => i.id === R.selected);
-      if (it) tileFill(it.x, it.y, 'rgba(239,95,36,0.18)', '#ef5f24');
-      else R.selected = null;
+      if (it) {
+        rangeFill(it, true);
+        footFill(it, 'rgba(239,95,36,0.18)', '#ef5f24');
+      } else R.selected = null;
     }
-    let ghost = null;
-    if (inside && R.tool && R.tool.mode === 'place') {
-      const okTile = !hoverItem && !AIT.Sim.itemLocked(s, R.tool.type) && s.cash >= AIT.Sim.itemCost(s, R.tool.type);
-      tileFill(h.x, h.y, okTile ? 'rgba(46,155,103,0.25)' : 'rgba(207,63,53,0.25)', okTile ? '#2e9b67' : '#cf3f35');
-      if (!hoverItem) ghost = { id: -1, type: R.tool.type, x: h.x, y: h.y, ghost: true };
-    } else if (inside && R.tool && R.tool.mode === 'sell') {
-      tileFill(h.x, h.y, hoverItem ? 'rgba(207,63,53,0.28)' : 'rgba(0,0,0,0.05)', hoverItem ? '#cf3f35' : 'rgba(0,0,0,0.2)');
-    } else if (inside && !R.tool) {
-      tileFill(h.x, h.y, 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.8)');
+    if (inside && tool && tool.mode === 'place') {
+      const why = AIT.Sim.canPlace(s, tool.type, h.x, h.y);
+      const okTile = !why && !AIT.Sim.itemLocked(s, tool.type) && s.cash >= AIT.Sim.itemCost(s, tool.type);
+      const g = { id: -1, type: tool.type, x: h.x, y: h.y, ghost: true };
+      rangeFill(g, true);
+      footFill(g, okTile ? 'rgba(46,155,103,0.25)' : 'rgba(207,63,53,0.25)', okTile ? '#2e9b67' : '#cf3f35');
+      if (!why) ghost = g;
+    } else if (inside && tool && tool.mode === 'sell') {
+      if (hoverItem) footFill(hoverItem, 'rgba(207,63,53,0.28)', '#cf3f35');
+      else rectFill(h.x, h.y, 1, 1, 'rgba(0,0,0,0.05)', 'rgba(0,0,0,0.2)');
+    } else if (inside && !tool) {
+      if (hoverItem) footFill(hoverItem, 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.8)');
+      else rectFill(h.x, h.y, 1, 1, 'rgba(255,255,255,0.25)', 'rgba(255,255,255,0.8)');
     }
 
     // who sits where
     const desks = s.items.filter((i) => D.ITEMS[i.type].seats).sort((a, b) => a.id - b.id);
     const deskStaff = new Map();
-    s.staff.forEach((p, i) => {
-      if (desks[i]) deskStaff.set(desks[i].id, p);
-    });
-    const mode = v.thermal < 0.8 ? 'hot' : s.training && v.trainPF > 0 ? 'train' : v.flagship ? 'serve' : 'idle';
+    for (const [pid, desk] of AIT.Sim.seating(s)) deskStaff.set(desk.id, s.staff.find((p) => p.id === pid));
+    const mode = s.training && v.trainPF > 0 ? 'train' : v.flagship ? 'serve' : 'idle';
     const info = { deskStaff, training: !!s.training, mode };
+    const hotInfo = Object.assign({}, info, { mode: 'hot' });
 
     updateLife(t, dt, s, v, running, N, desks, deskStaff);
     info.walking = new Set(life.walkers.keys());
     const list = ghost ? s.items.concat([ghost]) : s.items;
-    const drawables = list.map((it) => ({ it, k: it.x + it.y + 1, kx: it.x }));
+    // depth: the centre of each footprint, so 2×2 items sort with their neighbours
+    const drawables = list.map((it) => {
+      const n = it.legacy ? 1 : D.ITEMS[it.type].size || 1;
+      return { it, n, k: it.x + it.y + n, kx: it.x };
+    });
     for (const w of life.walkers.values()) {
       const [wx, wy] = walkerPos(w);
       drawables.push({ w, k: wx + wy + 0.05, kx: wx });
     }
     drawables.sort((a, b) => a.k - b.k || a.kx - b.kx);
     const sorted = drawables;
-    const hot = v.thermal < 1;
     const brown = v.powerFactor < 1;
     for (const d of sorted) {
       if (d.w) {
@@ -935,19 +973,26 @@
         continue;
       }
       const it = d.it;
-      const [cx, cy] = tileCenter(it.x, it.y);
       const art = ART[it.type];
       if (!art) continue;
+      // big items are drawn at double size around the centre of their footprint
+      const [cx, cy] = d.n > 1 ? P(0, 0, it.x + d.n / 2, it.y + d.n / 2, 0) : tileCenter(it.x, it.y);
+      const heat = it.ghost ? 1 : v.itemHeat.get(it.id);
       ctx.save();
       if (it.ghost) ctx.globalAlpha = 0.55;
       else if (brown && D.ITEMS[it.type].cat === 'compute' && Math.sin(t * 20 + it.id) > 0.6) ctx.globalAlpha = 0.75;
-      art(cx, cy, it, t, info);
+      if (d.n > 1) {
+        ctx.translate(cx, cy);
+        ctx.scale(d.n, d.n);
+        art(0, 0, it, t, heat != null && heat < 0.8 ? hotInfo : info);
+      } else art(cx, cy, it, t, heat != null && heat < 0.8 ? hotInfo : info);
       ctx.restore();
-      if (hot && D.ITEMS[it.type].cat === 'compute' && !it.ghost) {
-        const a = 0.25 + 0.2 * Math.sin(t * 4 + it.id);
-        ctx.fillStyle = `rgba(255,70,50,${a})`;
+      if (heat != null && heat < 1) {
+        // the hotter the GPU, the stronger the glow
+        const a = (0.15 + 0.45 * (1 - heat)) * (0.75 + 0.25 * Math.sin(t * 4 + it.id));
+        ctx.fillStyle = `rgba(255,70,50,${a.toFixed(3)})`;
         ctx.beginPath();
-        ctx.ellipse(cx, cy - 20, 20, 12, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy - 20 * d.n, 20 * d.n, 12 * d.n, 0, 0, Math.PI * 2);
         ctx.fill();
       }
     }
