@@ -70,6 +70,7 @@
         training: s.training ? { name: s.training.name, progressPct: r0((s.training.done / s.training.need) * 100) } : null,
         autoAlloc: s.autoAlloc,
         roundsRaised: s.rounds,
+        funding: { pitches: s.funding.pitches, walkaways: s.funding.walkaways.length, offersOnTable: s.funding.offers.length },
         contracts: s.contracts.length,
         staff: s.staff.map((p) => ({ role: p.founder ? 'founder' : p.role, skill: p.skill, salary: p.salary, morale: r0(p.morale) })),
         items: counts,
@@ -104,8 +105,11 @@
       case 'price': return `price $${e.from} → $${e.to}`;
       case 'alloc': return e.auto ? 'compute split: auto' : `compute split: manual ${Math.round(e.share * 100)}% training`;
       case 'campaign': return `ran campaign ${e.id}`;
-      case 'raise': return `raised ${e.round}: $${e.raise} at $${e.pre} pre (${e.dil}% dilution)`;
+      case 'raise': return `raised ${e.round}${e.investor ? ` from ${e.investor}` : ''}: $${e.raise} at $${e.pre} pre (${e.dil}% dilution)`;
       case 'decline': return `declined ${e.round} term sheet`;
+      case 'pitch': return `pitched ${e.round}: ${e.offers} offer${e.offers === 1 ? '' : 's'}`;
+      case 'push': return `asked ${e.investor} for a better price: ${e.won ? 'they agreed' : 'they walked away'}`;
+      case 'walk': return `walked away from ${e.n} ${e.round} offer${e.n === 1 ? '' : 's'}`;
       case 'choice': return `event ${e.id}: chose "${e.label}"`;
       case 'launch': return `launched product ${e.id}`;
       case 'pprice': return `${e.id} price $${e.from} → $${e.to}`;

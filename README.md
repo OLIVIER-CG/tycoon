@@ -20,7 +20,9 @@ older versions are upgraded when they load.
 
 **Share it.** `.github/workflows/pages.yml` publishes the game to GitHub Pages
 on every push to `main`. Turn it on once under Settings › Pages › Source:
-GitHub Actions. Outside the Claude artifact, "Send this run to Claude" shows
+GitHub Actions. The Feedback button in the top bar pauses the game and sends a
+snapshot of the run so far, with your comments, to Claude. Outside the Claude
+artifact, it and "Send this run to Claude" show
 the report for copying, so testers can paste it into a chat or send it to you.
 
 **Modes.** Standard games come in Relaxed, Normal and Hard. The Daily
@@ -32,13 +34,13 @@ $10M, no bankruptcy and rivals who never quite reach AGI.
 
 | Loop | What you do |
 | --- | --- |
-| **Build** | Place GPUs, cooling, power, desks and comfort items on an isometric grid. Heat is local: each cooler only reaches GPUs within its range (a blue square while you place it), and hot GPUs glow red and slow down. Whiteboards help researchers within 2 tiles, comfort items help desks within 3. Late-game hardware takes 2×2 tiles. |
+| **Build** | Place GPUs, cooling, power, desks and comfort items on an isometric grid. Keep total heat below total cooling, or every GPU glows red and slows down; where coolers stand does not matter. Whiteboards help researchers within 2 tiles, comfort items help desks within 3. Late-game hardware takes 2×2 tiles. |
 | **Train** | Pick a model size (Tiny 1B to Ultra 10T) and training data (licensed, synthetic, human feedback). Runs consume compute measured in PF-days, with a live loss curve. |
 | **Deploy** | Your live model wins market share based on its OmniBench score against rivals, your hype, your price and whether you have enough compute to serve everyone. |
 | **Sell** | Besides the chat app, launch a Developer API, Image Studio and Agents. Each has its own customers, price and compute bill. |
 | **Hire** | Researchers earn research points, engineers speed up training and serving, growth staff bring users, and safety staff prevent scandals. Everyone needs a desk and a reason to stay. |
 | **Research** | 26 technologies across five tiers, from Scaling Laws to the AGI Blueprint. They unlock bigger models, better hardware and efficiency gains. |
-| **Fund** | Eight funding rounds from Pre-seed to IPO. Each bigger office requires a funding round, and each round needs traction. |
+| **Fund** | Optional. Pitch investors for up to three competing term sheets: a top-tier VC (hype), a Big Tech partner (free cloud compute) or a founder-friendly fund (less dilution). Ask for a better price and risk the investor walking, or walk away and pay for it with lower offers for six months. Interest depends on your numbers for the stage, your runway and past walk-aways. Offices only cost money, so you can bootstrap on revenue and keep the whole company. |
 | **Survive** | Random events: GPU shortages, jailbreak scandals, copyright lawsuits, poaching, Senate hearings, enterprise deals, heatwaves and bubble talk. Rivals act too: they launch free tiers, start price wars, sue you and answer your launches with their own. |
 | **Stay aligned** | Safety staff, safety research and your choices in a crisis add up to an alignment score. It decides how the world greets your AGI: trusted, uneasy or reckless. |
 

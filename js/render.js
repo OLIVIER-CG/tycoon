@@ -868,8 +868,8 @@
 
   const itemAt = (s, x, y) => AIT.Sim.itemAt(s, x, y);
 
-  // what a placed item reaches: coolers cool GPUs, boards help researchers, comfort helps desks
-  const RANGE_COL = { cooling: ['rgba(63,150,255,0.10)', 'rgba(63,150,255,0.75)'], office: ['rgba(255,176,0,0.10)', 'rgba(214,140,0,0.8)'], comfort: ['rgba(46,155,103,0.10)', 'rgba(46,155,103,0.8)'] };
+  // what a placed item reaches: boards help researchers, comfort helps desks
+  const RANGE_COL = { office: ['rgba(255,176,0,0.10)', 'rgba(214,140,0,0.8)'], comfort: ['rgba(46,155,103,0.10)', 'rgba(46,155,103,0.8)'] };
   const rangeOf = (type) => D.ITEMS[type].radius || 0;
 
   // ---------- drawing ----------
@@ -917,9 +917,7 @@
     let ghost = null;
     const tool = R.tool;
     if (tool && tool.mode === 'place') {
-      // placing compute shows where your coolers reach; placing a cooler shows the others too
-      const cat = D.ITEMS[tool.type].cat;
-      if (cat === 'compute' || cat === 'cooling') for (const it of s.items) if (D.ITEMS[it.type].cooling) rangeFill(it, false);
+      // placing a desk shows where boards and comfort items already reach
       if (tool.type === 'desk') for (const it of s.items) if (D.ITEMS[it.type].rpBonus || D.ITEMS[it.type].decor) rangeFill(it, false);
     }
     if (R.selected) {

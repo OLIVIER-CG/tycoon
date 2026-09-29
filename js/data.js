@@ -18,17 +18,17 @@
       blurb: 'Exposed brick, fast fiber and a landlord who never asks about the humming.',
     },
     {
-      id: 'floor', name: 'Office Floor', size: 14, moveCost: 750000, round: 'a', rent: 80000, power: 700, cooling: 60,
+      id: 'floor', name: 'Office Floor', size: 14, moveCost: 750000, rent: 80000, power: 700, cooling: 60,
       floorA: '#dfe3e2', floorB: '#d5dad9', wall: '#a9c3cf', wallSide: '#93afbd', trim: '#5f7f8f',
       blurb: 'A whole floor downtown with glass walls, standing desks and a real server closet.',
     },
     {
-      id: 'campus', name: 'Tech Campus', size: 18, moveCost: 8e6, round: 'b', rent: 500000, power: 6000, cooling: 300,
+      id: 'campus', name: 'Tech Campus', size: 18, moveCost: 8e6, rent: 500000, power: 6000, cooling: 300,
       floorA: '#e6e1d6', floorB: '#ddd7ca', wall: '#eeeae2', wallSide: '#d9d3c7', trim: '#6f8a5e',
       blurb: 'Your own buildings, a cafeteria and a direct line to the power company.',
     },
     {
-      id: 'hyperscale', name: 'Hyperscale Campus', size: 24, moveCost: 90e6, round: 'd', rent: 4e6, power: 90000, cooling: 2000,
+      id: 'hyperscale', name: 'Hyperscale Campus', size: 24, moveCost: 90e6, rent: 4e6, power: 90000, cooling: 2000,
       floorA: '#cdd3d8', floorB: '#c3cacf', wall: '#7d8a96', wallSide: '#6b7784', trim: '#3f4a55',
       blurb: 'A city-sized compute cluster. You can see it from orbit.',
     },
@@ -48,11 +48,11 @@
     superpod: { name: 'SuperPod', cat: 'compute', size: 2, cost: 56e6, pf: 12000, power: 880, minOffice: 3, tech: 'custom_silicon', desc: 'Your custom chips wired as one giant accelerator. Takes 2×2 tiles.' },
     wafer: { name: 'Wafer-Scale Engine', cat: 'compute', size: 2, cost: 240e6, pf: 64000, power: 2400, minOffice: 3, tech: 'wafer_scale', desc: 'Chips the size of dinner plates, four to a cabinet. Takes 2×2 tiles.' },
 
-    fan: { name: 'Box Fan', cat: 'cooling', cost: 80, cooling: 1, power: 0.05, radius: 1, desc: 'Removes 1 kW of heat from GPUs within 1 tile. Point it at the rigs and hope.' },
-    ac: { name: 'AC Unit', cat: 'cooling', cost: 3000, cooling: 8, power: 1, radius: 2, desc: 'Removes 8 kW of heat from GPUs within 2 tiles.' },
-    chiller: { name: 'Industrial Chiller', cat: 'cooling', cost: 80000, cooling: 120, power: 8, radius: 3, minOffice: 2, desc: 'Removes 120 kW of heat from GPUs within 3 tiles.' },
-    liquid: { name: 'Liquid Cooling Loop', cat: 'cooling', cost: 900000, cooling: 1200, power: 40, radius: 4, tech: 'liquid_cooling', desc: 'Removes 1.2 MW of heat from GPUs within 4 tiles by piping coolant to the chips.' },
-    immersion: { name: 'Immersion Tank', cat: 'cooling', size: 2, cost: 36e6, cooling: 40000, power: 1000, radius: 4, tech: 'immersion', desc: 'Removes 40 MW of heat from GPUs within 4 tiles. The servers take a bath. Takes 2×2 tiles.' },
+    fan: { name: 'Box Fan', cat: 'cooling', cost: 80, cooling: 1, power: 0.05, desc: 'Removes 1 kW of heat. Point it at the rigs and hope.' },
+    ac: { name: 'AC Unit', cat: 'cooling', cost: 3000, cooling: 8, power: 1, desc: 'Removes 8 kW of heat.' },
+    chiller: { name: 'Industrial Chiller', cat: 'cooling', cost: 80000, cooling: 120, power: 8, minOffice: 2, desc: 'Removes 120 kW of heat.' },
+    liquid: { name: 'Liquid Cooling Loop', cat: 'cooling', cost: 900000, cooling: 1200, power: 40, tech: 'liquid_cooling', desc: 'Removes 1.2 MW of heat by piping coolant straight to the chips.' },
+    immersion: { name: 'Immersion Tank', cat: 'cooling', size: 2, cost: 36e6, cooling: 40000, power: 1000, tech: 'immersion', desc: 'Removes 40 MW of heat. The servers take a bath in dielectric fluid. Takes 2×2 tiles.' },
 
     battery: { name: 'Battery Wall', cat: 'power', cost: 12000, powerCap: 15, desc: '+15 kW capacity. Also rides out short power outages.' },
     substation: { name: 'Substation', cat: 'power', cost: 500000, powerCap: 800, minOffice: 2, desc: '+800 kW capacity from a dedicated grid hookup.' },
@@ -144,18 +144,28 @@
     { id: 'bigad', name: 'Big Game TV Ad', minOffice: 3, cost: 20e6, hype: 28, cd: 120, desc: 'Sixty seconds in front of a hundred million people.' },
   ];
 
-  // Funding rounds, raised in order. dil is the target dilution; min is the floor raise.
+  // Funding stages, raised in order. Raising is optional: investors buy a slice
+  // of the company. want() is how close you are to what investors hope to see
+  // at this stage (1 = exactly that); it decides how keen they are, not whether
+  // you may pitch. dil: typical slice sold. min: smallest typical check.
   const ROUNDS = [
-    { id: 'preseed', name: 'Pre-seed', dil: 0.1, min: 400e3, reqText: 'Train your first model', req: (s, v) => s.models.length >= 1 },
-    { id: 'seed', name: 'Seed', dil: 0.15, min: 1.5e6, reqText: 'Reach 1,000 subscribers', req: (s, v) => s.subs >= 1000 },
-    { id: 'a', name: 'Series A', dil: 0.18, min: 6e6, reqText: 'OmniBench 25+ or $150k monthly revenue', req: (s, v) => v.bestCap >= 25 || v.mrr >= 150e3 },
-    { id: 'b', name: 'Series B', dil: 0.15, min: 30e6, reqText: 'OmniBench 38+ and 100k subscribers', req: (s, v) => v.bestCap >= 38 && s.subs >= 100e3 },
-    { id: 'c', name: 'Series C', dil: 0.12, min: 150e6, reqText: 'OmniBench 52+', req: (s, v) => v.bestCap >= 52 },
-    { id: 'd', name: 'Series D', dil: 0.1, min: 600e6, reqText: 'OmniBench 65+', req: (s, v) => v.bestCap >= 65 },
-    { id: 'e', name: 'Strategic Round', dil: 0.08, min: 2e9, reqText: 'OmniBench 75+', req: (s, v) => v.bestCap >= 75 },
-    { id: 'ipo', name: 'IPO', dil: 0.1, min: 10e9, reqText: 'OmniBench 80+ and a $150B valuation', req: (s, v) => v.bestCap >= 80 && v.valuation >= 150e9 },
+    { id: 'preseed', name: 'Pre-seed', dil: 0.1, min: 400e3, wantText: 'a working model', want: (s) => (s.models.length ? 1 : 0) },
+    { id: 'seed', name: 'Seed', dil: 0.15, min: 1.5e6, wantText: '1,000 subscribers', want: (s) => s.subs / 1000 },
+    { id: 'a', name: 'Series A', dil: 0.18, min: 6e6, wantText: 'OmniBench 25 or $150k a month in revenue', want: (s, v) => Math.max(v.bestCap / 25, v.mrr / 150e3) },
+    { id: 'b', name: 'Series B', dil: 0.15, min: 30e6, wantText: 'OmniBench 38 and 100k subscribers', want: (s, v) => Math.min(v.bestCap / 38, s.subs / 100e3) },
+    { id: 'c', name: 'Series C', dil: 0.12, min: 150e6, wantText: 'OmniBench 52', want: (s, v) => v.bestCap / 52 },
+    { id: 'd', name: 'Series D', dil: 0.1, min: 600e6, wantText: 'OmniBench 65', want: (s, v) => v.bestCap / 65 },
+    { id: 'e', name: 'Strategic Round', dil: 0.08, min: 2e9, wantText: 'OmniBench 75', want: (s, v) => v.bestCap / 75 },
+    { id: 'ipo', name: 'IPO', dil: 0.1, min: 10e9, wantText: 'OmniBench 80 and a $150B valuation', want: (s, v) => Math.min(v.bestCap / 80, v.valuation / 150e9) },
   ];
 
+  // Who shows up when you pitch. val and size are ranges around a fair price
+  // and a typical check. push shifts the odds when you ask for a better price.
+  const INVESTORS = [
+    { id: 'vc', kind: 'Top-tier VC', names: ['Lumen Ventures', 'Summit Road Capital', 'Arcadia Partners', 'Northstar Ventures'], val: [0.95, 1.15], size: [1, 1.3], push: -0.1, perk: 'hype', perkText: 'A famous name on your cap table: hype +12 when you close.' },
+    { id: 'fund', kind: 'Founder-friendly fund', names: ['First Light Fund', 'Kindling Capital', 'Harbor Seed', 'Long Game Partners'], val: [1.1, 1.3], size: [0.55, 0.8], push: 0.1, perk: null, perkText: 'A smaller check at a better price. You keep more of the company.' },
+    { id: 'bigtech', kind: 'Big Tech partner', names: ['Titanium Cloud', 'Orbital Compute', 'Meridian Systems'], val: [0.75, 0.9], size: [0.8, 1.1], push: 0, perk: 'cloud', perkText: 'Throws in a year of free cloud compute.' },
+  ];
 
   // Products beyond the chat app. market: share of the chat market size.
   // infer: serving cost per customer relative to a chat subscriber.
@@ -175,7 +185,7 @@
   const ACHIEVEMENTS = [
     { id: 'first_light', name: 'First Light', desc: 'Deploy your first model.', check: (s) => !!s.flagshipId },
     { id: 'garage_done', name: 'Out of the Garage', desc: 'Move into the Downtown Loft.', check: (s) => s.officeLevel >= 1 },
-    { id: 'cool_head', name: 'Cool Head', desc: 'Run 20 or more GPUs with none overheating.', check: (s, v) => v.computeItems >= 20 && v.hotItems === 0 },
+    { id: 'cool_head', name: 'Cool Head', desc: 'Run 20 or more GPUs without overheating.', check: (s, v) => v.computeItems >= 20 && v.hotItems === 0 },
     { id: 'unicorn', name: 'Unicorn', desc: 'Reach a $1B valuation.', check: (s, v) => v.valuation >= 1e9 },
     { id: 'decacorn', name: 'Decacorn', desc: 'Reach a $10B valuation.', check: (s, v) => v.valuation >= 1e10 },
     { id: 'number_one', name: 'Number One', desc: 'Top the OmniBench leaderboard.', check: (s) => !!s.flags.wasSota },
@@ -189,6 +199,7 @@
     { id: 'agi', name: 'The Finish Line', desc: 'Build AGI.', check: (s) => !!(s.over && s.over.win) },
     { id: 'safe_hands', name: 'Safe Hands', desc: 'Build AGI with alignment of 70 or more.', check: (s) => !!(s.over && s.over.win && s.over.ending === 'aligned') },
     { id: 'speedrun', name: 'Speedrun', desc: 'Build AGI before 2030.', check: (s) => !!(s.over && s.over.win && s.day < 7 * 365) },
+    { id: 'bootstrapped', name: 'Bootstrapped', desc: 'Build AGI without selling any of the company.', check: (s) => !!(s.over && s.over.win && s.rounds.length === 0) },
     { id: 'hard_mode', name: 'Hard Mode Hero', desc: 'Build AGI on Hard.', check: (s) => !!(s.over && s.over.win && s.difficulty === 'hard') },
     { id: 'daily', name: 'Daily Grinder', desc: 'Finish a daily challenge.', check: (s) => !!(s.over && s.mode === 'daily') },
   ];
@@ -203,12 +214,12 @@
     { id: 'deploy1', text: 'Deploy a model to the public', hint: 'In Models, press Deploy on your new model.', check: (s) => !!s.flagshipId, reward: { cash: 5000 } },
     { id: 'hire1', text: 'Hire your first employee', hint: 'Build a desk, then hire from Team.', check: (s) => s.staff.length >= 2, reward: { rp: 5 } },
     { id: 'subs500', text: 'Reach 500 subscribers', hint: 'Keep your model deployed and your servers cool.', check: (s) => s.subs >= 500, reward: { hype: 5 } },
-    { id: 'preseed', text: 'Raise a Pre-seed round', hint: 'Open Finance and pitch investors.', check: (s) => s.rounds.includes('preseed'), reward: { hype: 5 } },
+    { id: 'preseed', text: 'Fund your lab', hint: 'Pitch investors in Finance, or grow on revenue to $150k in the bank.', check: (s) => s.rounds.length > 0 || s.cash >= 150e3, reward: { hype: 5 } },
     { id: 'scaling', text: 'Research Scaling Laws', hint: 'Open Research. Researchers earn RP every day.', check: (s) => !!s.techs.scaling_laws, reward: { rp: 10 } },
     { id: 'loft', text: 'Move into the Downtown Loft', hint: 'Build tab, Office section.', check: (s) => s.officeLevel >= 1, reward: { hype: 5 } },
-    { id: 'small', text: 'Train a Small model', hint: 'Small models need about 6,000 PF-days.', check: (s) => hasSize(s, 'small'), reward: { cash: 50000 } },
+    { id: 'small', text: 'Train a Small model', hint: 'About 6,000 PF-days of compute, plus $25k to $175k of training data. Keep cash for the data.', check: (s) => hasSize(s, 'small'), reward: { cash: 50000 } },
     { id: 'subs10k', text: 'Reach 10,000 subscribers', hint: 'A better model and some hype will do it.', check: (s) => s.subs >= 10000, reward: { hype: 8 } },
-    { id: 'seriesa', text: 'Raise a Series A', hint: 'Needs OmniBench 25+ or $150k monthly revenue.', check: (s) => s.rounds.includes('a'), reward: { rp: 40 } },
+    { id: 'seriesa', text: 'Build a $2M war chest', hint: 'Raise a round in Finance or earn it. The Office Floor costs $750k to move into.', check: (s) => s.cash >= 2e6 || s.officeLevel >= 2, reward: { rp: 40 } },
     { id: 'floor', text: 'Move into an Office Floor', hint: 'Unlocks 8-GPU Servers.', check: (s) => s.officeLevel >= 2, reward: { hype: 8 } },
     { id: 'sota', text: 'Top the OmniBench leaderboard', hint: 'Deploy a model that beats every rival.', check: (s) => !!s.flags.wasSota, reward: { hype: 10 } },
     { id: 'mrr1m', text: 'Reach $1M monthly revenue', hint: 'Subscribers x price, plus enterprise deals.', check: (s) => s.stats.peakMrr >= 1e6, reward: { rp: 150 } },
@@ -224,7 +235,7 @@
 
   AIT.DATA = {
     START_DATE, OFFICES, ITEMS, ITEM_CATS, ROLES, TECHS, MODEL_SIZES, DATA_SOURCES,
-    RIVALS, CAMPAIGNS, ROUNDS, GOALS, FIRST_NAMES, LAST_NAMES, PRODUCTS, DIFFICULTY, ACHIEVEMENTS,
+    RIVALS, CAMPAIGNS, ROUNDS, INVESTORS, GOALS, FIRST_NAMES, LAST_NAMES, PRODUCTS, DIFFICULTY, ACHIEVEMENTS,
     TECH_BY_ID: Object.fromEntries(TECHS.map((t) => [t.id, t])),
     SIZE_BY_ID: Object.fromEntries(MODEL_SIZES.map((m) => [m.id, m])),
   };

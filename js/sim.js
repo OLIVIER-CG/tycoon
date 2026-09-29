@@ -23,12 +23,13 @@
   const randi = (a, b) => Math.floor(rand(a, b + 1));
   const pick = (arr) => arr[Math.floor(random() * arr.length)];
   const sat = (x, k) => 1 - Math.exp(-x / k);
+  const money = (n) => (AIT.fmt ? AIT.fmt.money(n) : '$' + Math.round(n));
   const round1 = (x) => Math.round(x * 10) / 10;
   const gauss = () => (random() + random() + random() - 1.5) * 1.4;
   const RIVAL_BY_ID = Object.fromEntries(D.RIVALS.map((r) => [r.id, r]));
 
   const hooks = { toast: null, month: null, over: null };
-  const VERSION = 2;
+  const VERSION = 3;
 
   // ---------- footprints and seats ----------
   const sizeOf = (it) => (it.legacy ? 1 : D.ITEMS[it.type].size || 1);
@@ -71,6 +72,7 @@
     });
     return map;
   }
+  const fundingDefaults = () => ({ offers: [], cd: 0, walkaways: [], last: null, pitches: 0 });
   const productDefaults = () => Object.fromEntries(D.PRODUCTS.map((p) => [p.id, { live: false, price: p.price, users: 0, share: 0, target: 0 }]));
 
   function migrate(obj) {
@@ -83,6 +85,16 @@
       obj.difficulty = obj.difficulty || 'normal';
       obj.playMs = obj.playMs || 0;
       obj.v = 2;
+    }
+    if (obj.v < 3) {
+      // one term sheet at a time became several competing ones
+      const f = fundingDefaults();
+      f.cd = obj.roundCd || 0;
+      if (obj.offer) f.offers.push(Object.assign({ oid: 'o1', investor: 'Your investors', kind: 'Investors', type: 'vc', round: obj.offer.id, perk: null, pushed: true }, obj.offer));
+      obj.funding = f;
+      delete obj.offer;
+      delete obj.roundCd;
+      obj.v = 3;
     }
     return obj;
   }
@@ -170,8 +182,7 @@
       cloud: null,
       campaignCd: {},
       rounds: [],
-      roundCd: 0,
-      offer: null,
+      funding: fundingDefaults(),
       history: [],
       month: emptyMonth(),
       monthKey: monthKey(0),
@@ -260,7 +271,6 @@
     const office = D.OFFICES[s.officeLevel];
     const v = { office, pf: 0, power: 0, powerCap: office.power, cooling: 0, heat: 0, seats: 0, decor: 0, boards: 0, counts: {}, hwValue: 0, computeItems: 0, hotItems: 0 };
     const sources = [], coolers = [], boards = [], comforts = [];
-    const tileSource = new Map();
     for (const it of s.items) {
       const d = D.ITEMS[it.type];
       v.counts[it.type] = (v.counts[it.type] || 0) + 1;
@@ -272,12 +282,9 @@
       v.decor += d.decor || 0;
       v.hwValue += stat(it, 'cost') * 0.5;
       if (pf) {
-        const src = { it, pf, heat: power, cool: 0 };
-        sources.push(src);
-        const n = sizeOf(it);
-        for (let dx = 0; dx < n; dx++) for (let dy = 0; dy < n; dy++) tileSource.set(it.x + dx + ',' + (it.y + dy), src);
+        sources.push({ it, pf, heat: power });
       }
-      if (d.cooling) coolers.push({ it, cap: stat(it, 'cooling'), r: d.radius || 1 });
+      if (d.cooling) coolers.push({ it, cap: stat(it, 'cooling') });
       if (d.rpBonus) boards.push(it);
       if (d.decor) comforts.push(it);
     }
@@ -285,45 +292,18 @@
     v.computeItems = sources.length;
     v.powerFactor = v.power > v.powerCap ? v.powerCap / v.power : 1;
 
-    // Heat is local. The building's own cooling is shared by every GPU, and each
-    // cooler only reaches GPUs within its radius, split by how much heat they make.
-    const coolMult = effectMult(s, 'cooling');
+    // Heat is simple: every GPU adds heat, every cooler (and the building
+    // itself) removes some. If heat beats cooling, all GPUs slow down together.
     let totalHeat = 0;
-    for (const src of sources) {
-      src.heat *= v.powerFactor;
-      totalHeat += src.heat;
-    }
-    const ambient = office.cooling * coolMult;
-    for (const src of sources) src.cool = totalHeat > 0 ? (ambient * src.heat) / totalHeat : 0;
-    v.coolers = new Map();
-    let coolCap = ambient;
-    for (const c of coolers) {
-      const cap = c.cap * coolMult;
-      coolCap += cap;
-      const n = sizeOf(c.it);
-      const near = new Set();
-      for (let x = c.it.x - c.r; x < c.it.x + n + c.r; x++) {
-        for (let y = c.it.y - c.r; y < c.it.y + n + c.r; y++) {
-          const src = tileSource.get(x + ',' + y);
-          if (src) near.add(src);
-        }
-      }
-      let h = 0;
-      for (const src of near) h += src.heat;
-      if (h > 0) for (const src of near) src.cool += (cap * src.heat) / h;
-      v.coolers.set(c.it.id, { gpus: near.size, load: cap > 0 ? h / cap : 0 });
-    }
-    v.itemHeat = new Map();
-    let pfCool = 0;
-    for (const src of sources) {
-      const f = src.heat > 0 ? Math.max(0.3, Math.min(1, src.cool / src.heat)) : 1;
-      v.itemHeat.set(src.it.id, f);
-      if (f < 0.999) v.hotItems++;
-      pfCool += src.pf * f;
-    }
+    for (const src of sources) totalHeat += src.heat * v.powerFactor;
+    const coolCap = (office.cooling + coolers.reduce((a, c) => a + c.cap, 0)) * effectMult(s, 'cooling');
     v.heat = totalHeat;
     v.cooling = coolCap;
-    v.thermal = v.pf > 0 ? pfCool / v.pf : 1;
+    v.thermal = totalHeat > coolCap ? Math.max(0.3, coolCap / totalHeat) : 1;
+    v.itemHeat = new Map();
+    for (const src of sources) v.itemHeat.set(src.it.id, v.thermal);
+    if (v.thermal < 1) v.hotItems = sources.length;
+    const pfCool = v.pf * v.thermal;
     v.cloudPF = s.cloud && s.cloud.until > s.day ? s.cloud.pf : 0;
     v.computeMult = effectMult(s, 'compute');
     v.effPF = pfCool * v.powerFactor * v.computeMult + v.cloudPF;
@@ -516,6 +496,37 @@
     const capPart = v.market * 60 * lead * S * (0.6 + 0.8 * h);
     const team = 2e6 + s.staff.reduce((a, p) => a + p.skill, 0) * 1e5;
     return revPart + capPart + team + v.hwValue;
+  }
+
+  // ---------- funding ----------
+
+  // How keen investors are on your next round, and why.
+  function fundingView(s, v) {
+    const f = s.funding;
+    const round = D.ROUNDS[s.rounds.length] || null;
+    const net = v.burnMonth - v.mrr;
+    const runway = net <= 0 ? Infinity : Math.max(0, s.cash) / net;
+    const recent = f.walkaways.filter((d) => s.day - d < 180).length;
+    const out = { round, runway, recent, fit: 0, label: 'Cold', canPitch: false, why: '', base: 0, mult: 1 };
+    if (!round) return out;
+    out.fit = clamp(round.want(s, v) || 0, 0, 1.5);
+    out.label = out.fit >= 1 ? 'Hot' : out.fit >= 0.6 ? 'Warm' : out.fit >= 0.3 ? 'Cool' : 'Cold';
+    // investors pay more when you do not need them, and less when you keep walking away
+    const need = runway < 3 ? 0.75 : runway < 6 ? 0.9 : runway >= 12 ? 1.05 : 1;
+    out.mult = clamp(0.6 + 0.4 * out.fit, 0.6, 1.2) * need * (1 - 0.1 * Math.min(3, recent));
+    out.base = v.valuation * out.mult;
+    if (!s.models.length) out.why = 'Train a model first. Investors want to see something work.';
+    else if (f.cd > s.day) out.why = `You can pitch again in ${f.cd - s.day} days`;
+    else if (f.offers.length) out.why = 'You have term sheets on the table';
+    else out.canPitch = true;
+    return out;
+  }
+
+  function pushOdds(s, v, o) {
+    const fv = fundingView(s, v);
+    const inv = D.INVESTORS.find((i) => i.id === o.type) || { push: 0 };
+    const leverage = fv.runway >= 12 ? 0.15 : fv.runway < 3 ? -0.2 : 0;
+    return clamp(0.5 + 0.25 * (Math.min(fv.fit, 1.4) - 1) + leverage + inv.push, 0.15, 0.85);
   }
 
   // ---------- staff ----------
@@ -878,9 +889,11 @@
 
     staffDaily(s, v);
     if (s.day - s.candidatesDay >= 7) refreshCandidates(s);
-    if (s.offer && s.day > s.offer.expires) {
-      news(s, `The ${s.offer.name} term sheet expired.`, 'warn');
-      s.offer = null;
+    const f = s.funding;
+    if (f.offers.length && s.day > f.offers[0].expires) {
+      news(s, `Your ${f.offers[0].name} term sheets expired.`, 'warn');
+      f.offers = [];
+      f.cd = s.day + 30;
     }
 
     v = derive(s);
@@ -942,7 +955,6 @@
     moveOffice(s) {
       const next = D.OFFICES[s.officeLevel + 1];
       if (!next) return no('You already own the biggest campus');
-      if (next.round && !s.rounds.includes(next.round)) return no(`The landlord wants to see your ${D.ROUNDS.find((r) => r.id === next.round).name} first`);
       if (s.cash < next.moveCost) return no('Not enough cash');
       s.cash -= next.moveCost;
       s.month.capex += next.moveCost;
@@ -1133,40 +1145,92 @@
       return ok(`${c.name}: +${gain.toFixed(1)} hype`);
     },
 
+    // Pitching brings back up to three competing term sheets, or none if
+    // investors are not interested yet.
     pitch(s) {
-      const round = D.ROUNDS[s.rounds.length];
-      if (!round) return no('No more rounds to raise');
-      if (s.offer) return no('You already have a term sheet');
-      if (s.roundCd > s.day) return no(`Investors want to wait ${s.roundCd - s.day} more days`);
+      const f = s.funding;
       const v = derive(s);
-      if (!round.req(s, v)) return no(`Not yet: ${round.reqText}`);
-      const pre = v.valuation * rand(0.9, 1.15);
-      const raise = Math.max(round.min, (pre * round.dil) / (1 - round.dil));
-      s.offer = { id: round.id, name: round.name, pre, raise, dilution: raise / (pre + raise), expires: s.day + 14 };
-      return ok(`Term sheet received for your ${round.name}`);
+      const fv = fundingView(s, v);
+      if (!fv.round) return no('There is nothing left to raise');
+      if (f.offers.length) return no('You already have term sheets on the table');
+      if (!fv.canPitch) return no(fv.why);
+      f.pitches++;
+      const n = fv.fit >= 1 ? 3 : fv.fit >= 0.6 ? 2 : fv.fit >= 0.3 ? 1 : 0;
+      if (!n) {
+        f.cd = s.day + 30;
+        log(s, 'pitch', { round: fv.round.name, offers: 0 });
+        return ok(`Investors passed on your ${fv.round.name}. They want to see ${fv.round.wantText}.`);
+      }
+      // a cool reception only gets the friendliest fund, and a smaller check
+      const types = n === 1 ? [D.INVESTORS[1]] : D.INVESTORS.slice().sort(() => random() - 0.5).slice(0, n);
+      f.offers = types.map((inv, i) => {
+        const pre = fv.base * rand(inv.val[0], inv.val[1]);
+        const typical = Math.max(fv.round.min, (pre * fv.round.dil) / (1 - fv.round.dil));
+        const raise = typical * rand(inv.size[0], inv.size[1]) * (n === 1 ? 0.5 : 1);
+        return {
+          oid: 'o' + s.nextId++, type: inv.id, kind: inv.kind, investor: pick(inv.names), perk: inv.perk,
+          round: fv.round.id, name: fv.round.name, pre, raise, dilution: raise / (pre + raise), pushed: false, expires: s.day + 14,
+        };
+      });
+      log(s, 'pitch', { round: fv.round.name, offers: n });
+      return ok(`${n} term sheet${n === 1 ? '' : 's'} for your ${fv.round.name}`);
     },
 
-    acceptOffer(s) {
-      const o = s.offer;
-      if (!o) return no('No offer');
+    acceptOffer(s, oid) {
+      const f = s.funding;
+      const o = f.offers.find((x) => x.oid === oid) || (oid == null && f.offers[0]);
+      if (!o) return no('That offer is gone');
       s.cash += o.raise;
       s.month.funding += o.raise;
       s.equity *= 1 - o.dilution;
-      s.rounds.push(o.id);
-      log(s, 'raise', { round: o.name, raise: Math.round(o.raise), pre: Math.round(o.pre), dil: Math.round(o.dilution * 1000) / 10 });
-      s.offer = null;
+      s.rounds.push(o.round);
       s.hype = Math.min(100, s.hype + 4);
-      if (o.id === 'ipo') s.flags.public = true;
-      news(s, `${s.company} closes its ${o.name}.`, 'good', true);
+      if (o.perk === 'hype') s.hype = Math.min(100, s.hype + 12);
+      if (o.perk === 'cloud') {
+        const pf = Math.max(20, derive(s).effPF * 0.3);
+        s.cloud = { pf: Math.max(pf, s.cloud && s.cloud.until > s.day ? s.cloud.pf : 0), until: s.day + 365 };
+      }
+      if (o.round === 'ipo') s.flags.public = true;
+      log(s, 'raise', { round: o.name, investor: o.investor, raise: Math.round(o.raise), pre: Math.round(o.pre), dil: Math.round(o.dilution * 1000) / 10 });
+      f.last = { day: s.day, round: o.name, raise: o.raise, pre: o.pre };
+      f.offers = [];
+      f.walkaways = [];
+      news(s, `${s.company} closes its ${o.name}, led by ${o.investor}.`, 'good', true);
       return ok();
     },
 
-    declineOffer(s) {
-      if (!s.offer) return no('No offer');
-      log(s, 'decline', { round: s.offer.name });
-      s.offer = null;
-      s.roundCd = s.day + 30;
-      return ok('Offer declined. Investors will listen again in 30 days.');
+    // Ask for a higher valuation. It works more often when you do not need the money.
+    pushOffer(s, oid) {
+      const f = s.funding;
+      const o = f.offers.find((x) => x.oid === oid);
+      if (!o) return no('That offer is gone');
+      if (o.pushed) return no('You already pushed this investor');
+      const odds = pushOdds(s, derive(s), o);
+      o.pushed = true;
+      if (random() < odds) {
+        o.pre *= 1.2;
+        o.dilution = o.raise / (o.pre + o.raise);
+        log(s, 'push', { investor: o.investor, won: true });
+        return ok(`${o.investor} agreed: now ${money(o.pre)} before the money, ${(o.dilution * 100).toFixed(1)}% of the company.`);
+      }
+      f.offers = f.offers.filter((x) => x !== o);
+      log(s, 'push', { investor: o.investor, won: false });
+      if (!f.offers.length) f.cd = s.day + 30;
+      news(s, `${o.investor} walked away from the table.`, 'warn');
+      return no(`${o.investor} walked away.`);
+    },
+
+    // Turn down every offer. Investors remember for a while.
+    walkAway(s) {
+      const f = s.funding;
+      if (!f.offers.length) return no('No offers to turn down');
+      const best = f.offers.reduce((a, o) => (o.raise > a.raise ? o : a));
+      f.last = { day: s.day, round: best.name, raise: best.raise, pre: best.pre, declined: true };
+      log(s, 'walk', { round: best.name, n: f.offers.length });
+      f.offers = [];
+      f.walkaways.push(s.day);
+      f.cd = s.day + 30;
+      return ok('You walked away. Investors will take your call again in 30 days.');
     },
 
     sandbox(s) {
@@ -1205,7 +1269,7 @@
   const trainCostFor = (p) => Math.max(2000, Math.round((p.salary || 6000) * 1.5));
 
   AIT.Sim = {
-    newGame, tick, derive, actions: A, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
+    newGame, tick, derive, actions: A, fundingView, pushOdds, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
     sizeOf, stat, itemAt, occupied, canPlace, gap, seating, rivalBoost, hooks, news, addEffect, effectMult, itemCost, itemLocked,
     expectedCap, trainingCost, salaryFor, trainCostFor, eventView, resolveEvent, endGame, makeCandidate,
     dateOf, flagship, topRival, marketSize, techTotals, refreshCandidates,

@@ -13,8 +13,8 @@
     },
     {
       id: 'believers', num: 2, title: 'First Believers',
-      when: (s) => s.rounds.includes('preseed'),
-      text: 'An angel investor wired you money after a twenty-minute call and one demo. For the first time, other people are betting on you. Time to hire.',
+      when: (s) => s.rounds.length > 0 || s.subs >= 250,
+      text: (s) => (s.rounds.length ? 'An investor wired you money after a twenty-minute call and one demo.' : 'Two hundred and fifty strangers now pay you every month.') + ' For the first time, other people are betting on you. Time to hire.',
       news: ['Team: hire people (they need desks)', 'Comfort items keep your team happy', 'R&D opens once someone is researching'],
     },
     {

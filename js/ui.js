@@ -66,6 +66,8 @@
     placeWarnAt: 0,
     chapters: [],
     ng: { mode: 'standard', difficulty: 'normal' },
+    resumeSpeed: null,
+    fbDraft: '',
   };
   const $ = (id) => document.getElementById(id);
   const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -116,7 +118,7 @@
   function statLine(d) {
     const big = d.size > 1 ? ` · ${d.size}×${d.size}` : '';
     if (d.pf) return `${fmt.pf(d.pf)} · ${fmt.kw(d.power)}${big}`;
-    if (d.cooling) return `${fmt.kw(d.cooling)} · reach ${d.radius}${big}`;
+    if (d.cooling) return `cools ${fmt.kw(d.cooling)}${big}`;
     if (d.powerCap) return `+${fmt.kw(d.powerCap)}${big}`;
     if (d.seats) return `seats ${d.seats}`;
     if (d.rpBonus) return `+${Math.round(d.rpBonus * 100)}% RP · reach ${d.radius}`;
@@ -151,14 +153,17 @@
     const o = v.office, next = D.OFFICES[s.officeLevel + 1];
     let nextHtml = next ? '' : '<p class="muted small">You own the biggest campus there is.</p>';
     if (next && Progress.has(s, 'office:next')) {
-      const round = next.round && D.ROUNDS.find((r) => r.id === next.round);
-      const gated = round && !s.rounds.includes(next.round);
+      // what the move does to your runway: new rent against today's profit
+      const after = s.cash - next.moveCost;
+      const net = v.burnMonth - o.rent + next.rent - v.mrr;
+      const note = s.cash < next.moveCost ? `You need ${money(next.moveCost - s.cash)} more. Earn it or raise it in Finance.` : net <= 0 ? 'You would still turn a profit after the move.' : `After the move you would have about ${Math.max(0, Math.floor(after / net))} months of cash at the new rent.`;
       nextHtml = `
         <div class="next-office">
           <div class="row between"><div><div class="eyebrow">Next office</div><h4>${next.name}</h4></div><span class="tag mono">${next.size}×${next.size}</span></div>
           <p class="small muted">${next.blurb}</p>
           <dl class="kv small"><div><dt>Power</dt><dd class="mono">${fmt.kw(next.power)}</dd></div><div><dt>Cooling</dt><dd class="mono">${fmt.kw(next.cooling)}</dd></div><div><dt>Rent</dt><dd class="mono">${money(next.rent)}/mo</dd></div></dl>
-          ${gated ? `<p class="lock-note">Requires your ${round.name}</p>` : `<button class="btn primary wide" data-act="move"${disabled(s.cash < next.moveCost)}>Move for ${money(next.moveCost)}</button>`}
+          <p class="small${s.cash >= next.moveCost && net > 0 && after / net < 6 ? ' warn-text' : ' muted'}">${note}</p>
+          <button class="btn primary wide" data-act="move"${disabled(s.cash < next.moveCost)}>Move for ${money(next.moveCost)}</button>
         </div>`;
     }
     const cats = D.ITEM_CATS.filter((c) => Progress.has(s, 'cat:' + c.id));
@@ -201,14 +206,10 @@
       <p class="small muted">${locked.length > 1 ? `${locked.length - 1} more to discover as you grow. ` : ''}${Object.keys(D.ITEMS).some((t) => Sim.itemCost(s, t) !== D.ITEMS[t].cost) ? '* Hardware prices are moving with the market right now.' : ''}</p>`;
   }
 
-  // Heat is local, so show how many GPUs are too hot rather than one total.
+  // One building-wide rule: GPUs make heat, coolers and the building remove it.
   function heatBlock(s, v) {
-    const n = v.computeItems, hot = v.hotItems;
-    const cls = hot === 0 ? 'ok' : v.thermal < 0.85 ? 'bad' : 'warn';
-    const txt = !n ? 'No GPUs yet' : hot === 0 ? `All ${n} cool` : `${hot} of ${n} overheating`;
-    const lost = v.pf > 0 ? 1 - v.thermal : 0;
-    return `<div class="meter ${cls}" data-coach="heat"><div class="meter-top"><span>GPU heat</span><span class="mono">${txt}</span></div>${bar(n ? 1 - hot / n : 0)}</div>
-      <p class="small muted">${hot ? `Hot GPUs glow red and slow down, costing you ${lost < 0.01 ? 'under 1%' : fmt.pct(lost)} of your compute. ` : ''}Each cooler only reaches GPUs inside its square: place one and the blue square shows where. The building itself cools ${fmt.kw(v.office.cooling)}, shared by every GPU.</p>`;
+    return `${meter('Heat vs cooling', v.heat, v.cooling, fmt.kw, 0.85, 'heat')}
+      <p class="small muted">${v.thermal < 1 ? `<b class="bad-text">Too hot: every GPU runs at ${fmt.pct(v.thermal)} speed.</b> Add cooling from the Cooling tab. ` : ''}GPUs turn power into heat. Keep heat below cooling and it doesn't matter where things stand.</p>`;
   }
 
   // ---------- effects, spelled out ----------
@@ -467,8 +468,18 @@
     return `<div class="planner small">
       <div class="eyebrow">Planner</div>
       <p>To finish a ${size.name} in ${days} days you need about <b class="mono">${fmt.pf(needPF)}</b> for training. You have <b class="mono">${fmt.pf(have)}</b>.</p>
-      <p>That is roughly <b>${n.toLocaleString('en-US')} more ${d.name}${n === 1 ? '' : 's'}</b> (${money(cost)}), drawing ${fmt.kw(power)}${power > spare ? `, and you only have ${fmt.kw(spare)} of power to spare` : ''}. Each one also needs cooling within reach.${n * (d.size || 1) ** 2 > 0.6 * v.office.size ** 2 ? ' That will not fit in this office: a bigger one holds faster hardware.' : ''}</p>
+      <p>That is roughly <b>${n.toLocaleString('en-US')} more ${d.name}${n === 1 ? '' : 's'}</b> (${money(cost)}), drawing ${fmt.kw(power)}${power > spare ? `, and you only have ${fmt.kw(spare)} of power to spare` : ''}, and about ${fmt.kw(power)} more cooling.${n * (d.size || 1) ** 2 > 0.6 * v.office.size ** 2 ? ' That will not fit in this office: a bigger one holds faster hardware.' : ''}</p>
     </div>`;
+  }
+
+  // when the data is too expensive, say which boxes to untick
+  function dataAdvice(s, size, cost) {
+    const on = D.DATA_SOURCES.filter((src) => ui.train.data[src.id] && (!src.tech || s.techs[src.tech]));
+    const drop = on.slice().sort((a, b) => size.data[b.id] - size.data[a.id]).find((src) => cost - size.data[src.id] <= s.cash);
+    if (drop) return `Untick ${drop.name} to save ${money(size.data[drop.id])}.`;
+    const cheapest = on.slice().sort((a, b) => size.data[a.id] - size.data[b.id])[0];
+    if (cheapest && size.data[cheapest.id] <= s.cash) return `${cheapest.name} alone costs ${money(size.data[cheapest.id])}.`;
+    return 'With no boxes ticked the run is free, but scraped data risks copyright lawsuits.';
   }
 
   function renderModels(s, v) {
@@ -535,6 +546,7 @@
           <p class="small muted">Speed: ${fmt.pf(trainPF(s, v))} for training × ${v.trainMult.toFixed(2)} from engineers and research = ${fmt.num(rate)} PF-days a day. This model needs ${fmt.pfdays(size.pfdays)}.</p>
           ${planner(s, v, size)}
           ${days > 365 ? `<p class="lock-note">Too slow to start: ${days === Infinity ? 'you have no spare compute' : `it would take ${days > 3650 ? 'over 10 years' : days + ' days'}`}. Add GPUs in Build › Compute${s.officeLevel === 0 ? ' (a bigger office holds much faster ones)' : ''}, or pick a smaller model.</p>` : days > 150 ? `<p class="small warn-text">This run will take ${days} days. More GPUs would make it much faster.</p>` : ''}
+          ${s.cash < cost && days <= 365 ? `<p class="lock-note">Not enough cash for this data (${money(cost)}). ${dataAdvice(s, size, cost)}</p>` : ''}
           <button class="btn primary wide" data-act="start-train"${disabled(s.cash < cost || days > 365)}>Start training · ${money(cost)}</button>
         </section>`;
     }
@@ -635,29 +647,86 @@
       <p class="small muted">Every product runs on your live model, so a better model sells all of them. Their customers need compute too, served from the same GPUs as chat.${teaser ? ` Next: ${teaser.name} (research ${D.TECH_BY_ID[teaser.tech].name}).` : ''}</p>`;
   }
 
+  // what investors look at for each stage, in your own numbers
+  const HAVE = {
+    preseed: (s) => `${s.models.length} model${s.models.length === 1 ? '' : 's'}`,
+    seed: (s) => `${fmt.num(s.subs)} subscribers`,
+    a: (s, v) => `OmniBench ${v.bestCap.toFixed(1)} and ${money(v.mrr)} a month`,
+    b: (s, v) => `OmniBench ${v.bestCap.toFixed(1)} and ${fmt.num(s.subs)} subscribers`,
+    c: (s, v) => `OmniBench ${v.bestCap.toFixed(1)}`,
+    d: (s, v) => `OmniBench ${v.bestCap.toFixed(1)}`,
+    e: (s, v) => `OmniBench ${v.bestCap.toFixed(1)}`,
+    ipo: (s, v) => `OmniBench ${v.bestCap.toFixed(1)} and a ${money(v.valuation)} valuation`,
+  };
+  const INTEREST_CLS = { Hot: 'ok', Warm: 'ok', Cool: 'warn', Cold: 'bad' };
+  const INTEREST_TXT = {
+    Hot: 'Expect three competing offers.',
+    Warm: 'Expect two offers, a little below your valuation.',
+    Cool: 'Expect one small offer at a low price.',
+    Cold: 'Investors will most likely pass for now.',
+  };
+
+  function renderFunding(s, v) {
+    const f = s.funding;
+    const fv = Sim.fundingView(s, v);
+    const raised = s.log.filter((e) => e.a === 'raise');
+    const history = raised.length
+      ? `<div class="list rounds">${raised.map((e) => `<div class="round done"><div class="grow"><div class="name">${esc(e.round)}${e.investor ? ` · ${esc(e.investor)}` : ''}</div><div class="small muted">${money(e.raise)} at ${money(e.pre)} before the money · ${e.dil}% of the company</div></div><span class="tag ok">Raised</span></div>`).join('')}</div>`
+      : '';
+    if (f.offers.length) {
+      const cards = f.offers
+        .map((o) => {
+          const inv = D.INVESTORS.find((i) => i.id === o.type);
+          const odds = Sim.pushOdds(s, v, o);
+          return `<section class="card offer">
+            <div class="eyebrow">${esc(o.kind)} · ${esc(o.name)}</div>
+            <h3>${esc(o.investor)}</h3>
+            <p><b class="mono">${money(o.raise)}</b> for <b class="mono">${fmt.pct(o.dilution, 1)}</b> of the company</p>
+            <dl class="kv small">
+              <div><dt>Values you at</dt><dd class="mono">${money(o.pre)}</dd></div>
+              <div><dt>You would own</dt><dd class="mono">${fmt.pct(s.equity * (1 - o.dilution), 1)}</dd></div>
+            </dl>
+            ${inv ? `<p class="small">${inv.perkText}</p>` : ''}
+            <div class="row gap wrap"><button class="btn primary" data-act="accept" data-id="${o.oid}">Take the deal</button>${o.pushed ? '<span class="tag">Final offer</span>' : `<button class="btn" data-act="push" data-id="${o.oid}">Ask for 20% more · ${fmt.pct(odds)} chance</button>`}</div>
+          </section>`;
+        })
+        .join('');
+      return `<h3 class="section-title">Term sheets <span class="tag mono">${f.offers[0].expires - s.day}d left</span></h3>
+        ${cards}
+        <div class="row gap"><button class="btn ghost" data-act="walk">Walk away from all of them</button></div>
+        <p class="small muted">If you ask for more, the investor may say yes or leave the table. It works more often when you don't need the money. Walking away costs nothing today, but each walk-away cuts your next offers by 10% for six months.</p>`;
+    }
+    if (!fv.round) return `<h3 class="section-title">Funding</h3>${history}<p class="small muted">You are a public company. There is nothing left to raise.</p>`;
+    const r = fv.round;
+    const typical = Math.max(r.min, (v.valuation * r.dil) / (1 - r.dil));
+    const factors = [];
+    if (fv.runway < 3) factors.push(['bad', 'You are nearly out of cash, and investors can tell: offers come in 25% lower.']);
+    else if (fv.runway < 6) factors.push(['warn', `Under 6 months of cash left: offers come in 10% lower.`]);
+    else if (fv.runway >= 12) factors.push(['ok', fv.runway === Infinity ? 'You are profitable, so you can drive a hard bargain.' : 'Over a year of cash: you can drive a hard bargain.']);
+    if (fv.recent) factors.push(['warn', `You walked away ${fv.recent === 1 ? 'once' : fv.recent + ' times'} recently: offers are ${fv.recent * 10}% lower for now.`]);
+    if (f.last) factors.push(['', `Last time (${fmt.date(f.last.day)}), your best ${esc(f.last.round)} offer was ${money(f.last.raise)} at ${money(f.last.pre)}.`]);
+    return `<h3 class="section-title">Funding <span class="tag">optional</span></h3>
+      <section class="card">
+        <div class="row between"><div><div class="eyebrow">Next stage</div><h3>${r.name}</h3></div><span class="tag ${INTEREST_CLS[fv.label]}">${fv.label} interest</span></div>
+        ${bar(Math.min(1, fv.fit), INTEREST_CLS[fv.label])}
+        <p class="small">Investors want to see ${r.wantText}. You have ${HAVE[r.id](s, v)}. ${INTEREST_TXT[fv.label]}</p>
+        <dl class="kv small">
+          <div><dt>Typical check</dt><dd class="mono">${money(typical)} for ~${fmt.pct(r.dil)}</dd></div>
+          <div><dt>Your valuation</dt><dd class="mono">${money(v.valuation)}</dd></div>
+          <div><dt>Cash lasts</dt><dd class="mono">${fv.runway === Infinity ? 'profitable' : fv.runway > 36 ? '3+ years' : Math.floor(fv.runway) + ' months'}</dd></div>
+          <div><dt>You own</dt><dd class="mono">${fmt.pct(s.equity, 1)}</dd></div>
+        </dl>
+        ${factors.length ? `<ul class="factors-list small">${factors.map(([k, t]) => `<li class="${k ? k + '-text' : 'muted'}">${t}</li>`).join('')}</ul>` : ''}
+        <button class="btn${fv.canPitch && fv.fit >= 0.3 ? ' primary' : ''} wide" data-act="pitch"${disabled(!fv.canPitch)}>${fv.canPitch ? `Pitch your ${r.name}` : esc(fv.why)}</button>
+        <p class="small muted">You never have to raise. Money now means a smaller slice later, and the slice you keep is your score at the end.</p>
+      </section>
+      ${history}`;
+  }
+
   function renderFinance(s, v) {
     const last = s.history[s.history.length - 1];
     const hist = s.history.slice(-24);
-    const next = D.ROUNDS[s.rounds.length];
-    const laterRounds = Math.max(0, D.ROUNDS.length - s.rounds.length - 1);
-    const rounds = D.ROUNDS.slice(0, s.rounds.length + 1).map((r, i) => {
-      const done = s.rounds.includes(r.id);
-      const isNext = i === s.rounds.length;
-      const met = isNext && r.req(s, v);
-      return `<div class="round${done ? ' done' : ''}${isNext ? ' next' : ''}">
-        <span class="step mono">${i + 1}</span>
-        <div class="grow"><div class="name">${r.name}</div><div class="small muted">${r.reqText}${isNext && !met ? '' : ''}</div></div>
-        <div class="actions">${done ? '<span class="tag ok">Raised</span>' : isNext ? `<button class="btn small${met ? ' primary' : ''}" data-act="pitch"${disabled(!met || !!s.offer || s.roundCd > s.day)}>${s.roundCd > s.day ? `Wait ${s.roundCd - s.day}d` : met ? 'Pitch investors' : 'Not yet'}</button>` : ''}</div>
-      </div>`;
-    }).join('');
-    const offer = s.offer
-      ? `<section class="card offer">
-          <div class="eyebrow">Term sheet · expires in ${s.offer.expires - s.day}d</div>
-          <h3>${s.offer.name}: raise ${money(s.offer.raise)}</h3>
-          <dl class="kv small"><div><dt>Pre-money valuation</dt><dd class="mono">${money(s.offer.pre)}</dd></div><div><dt>Dilution</dt><dd class="mono">${fmt.pct(s.offer.dilution, 1)}</dd></div><div><dt>Your stake after</dt><dd class="mono">${fmt.pct(s.equity * (1 - s.offer.dilution), 1)}</dd></div></dl>
-          <div class="row gap"><button class="btn primary" data-act="accept">Accept</button><button class="btn ghost" data-act="decline">Decline</button></div>
-        </section>`
-      : '';
+    const funding = renderFunding(s, v);
     const pl = last
       ? `<table class="pl small"><caption class="eyebrow">${last.label}</caption>
           <tr><th>Subscriptions</th><td class="mono">${money(last.detail.rev)}</td></tr>
@@ -674,7 +743,7 @@
         </table>`
       : '<p class="small muted">Your first monthly report arrives at the end of the month.</p>';
     return `
-      ${offer}
+      ${s.funding.offers.length ? funding : ''}
       <section class="card">
         <dl class="kpis">
           <div><dt>Cash</dt><dd class="mono${s.cash < 0 ? ' bad-text' : ''}">${money(s.cash)}</dd></div>
@@ -684,11 +753,9 @@
           <div><dt>Valuation</dt><dd class="mono">${money(v.valuation)}</dd></div>
           <div><dt>Your stake</dt><dd class="mono">${fmt.pct(s.equity, 1)} · ${money(v.netWorth)}</dd></div>
         </dl>
-        <div class="chart-wrap"><div class="eyebrow">Cash, last ${hist.length} months</div>${sparkline(hist.map((h) => h.cash), 320, 70, 'cash-chart')}</div>
+        ${hist.length >= 2 ? `<div class="chart-wrap"><div class="eyebrow">Cash, last ${hist.length} months</div>${sparkline(hist.map((h) => h.cash), 320, 70, 'cash-chart')}</div>` : ''}
       </section>
-      <h3 class="section-title">Funding</h3>
-      <div class="list rounds">${rounds}</div>
-      ${next ? (laterRounds ? `<p class="small muted">${laterRounds} more rounds after this one, all the way to an IPO.</p>` : '') : '<p class="small muted">You are a public company. Keep growing.</p>'}
+      ${s.funding.offers.length ? '' : funding}
       <h3 class="section-title">Last month</h3>
       <section class="card">${pl}</section>`;
   }
@@ -766,16 +833,16 @@
     set('hud-val', `<span class="k">Valuation</span><span class="v mono">${money(v.valuation)}</span><span class="d mono">you own ${fmt.pct(s.equity, 0)}</span>`);
 
     const alerts = [];
-    if (v.hotItems > 0 && v.thermal < 0.99) alerts.push([v.thermal < 0.9 ? 'bad' : 'warn', `${v.hotItems} GPU${v.hotItems === 1 ? ' is' : 's are'} overheating (−${fmt.pct(1 - v.thermal)} compute). Put cooling next to the red ones.`, 'build:cooling']);
+    if (v.thermal < 1) alerts.push([v.thermal < 0.9 ? 'bad' : 'warn', `Overheating: GPUs slowed to ${fmt.pct(v.thermal)}. Add cooling.`, 'build:cooling']);
     if (v.powerFactor < 1) alerts.push(['warn', `Power limit: GPUs running at ${fmt.pct(v.powerFactor)}. Add power.`, 'build:power']);
     if (v.flagship && v.service < 0.95) alerts.push(['bad', `Serving only ${fmt.pct(v.service)} of users. Add compute or train less.`, 'models']);
     if (s.stats.negDays > 0) alerts.push(['bad', `Out of cash: ${90 - s.stats.negDays} days to bankruptcy.`, 'finance']);
-    if (s.offer) alerts.push(['good', `${s.offer.name} term sheet is waiting.`, 'finance']);
+    if (s.funding.offers.length) alerts.push(['good', `${s.funding.offers.length} term sheet${s.funding.offers.length === 1 ? ' is' : 's are'} waiting (${s.funding.offers[0].expires - s.day}d left).`, 'finance']);
     if (!s.training && !s.models.length) alerts.push(['info', 'Start your first training run.', 'models']);
     else if (!v.flagship && s.models.length) alerts.push(['info', 'You have a model. Deploy it to get users.', 'models']);
     if (v.idleDays > 20 && !s.over) alerts.push(['warn', `Your GPUs have not trained anything for ${v.idleDays} days. Start a run.`, 'models']);
-    const nextRound = D.ROUNDS[s.rounds.length];
-    if (nextRound && !s.offer && s.roundCd <= s.day && nextRound.req(s, v)) alerts.push(['good', `Investors will take your ${nextRound.name} pitch.`, 'finance']);
+    const fv = Sim.fundingView(s, v);
+    if (fv.canPitch && fv.fit >= 1 && Progress.has(s, 'tab:finance')) alerts.push(['good', `Investors are keen on your ${fv.round.name}. Pitching is optional.`, 'finance']);
     // during the tutorial Mira is the guide, so only real problems show here
     const tutorial = AIT.Mentor.tutorialActive(s);
     const ah = alerts
@@ -822,10 +889,8 @@
       notes.push(`Adds ${describeImpact(s, v, p.role, Sim.impact(s, v, { remove: p.id }), false, p.salary).effects.join(' · ')}`);
       notes.push(`Comfort here +${Math.round(seat.comfort)}${p.role === 'researcher' ? ` · whiteboards +${Math.round(seat.board * 100)}% research` : ''}`);
     } else if (d.seats) notes.push('<span class="muted">Empty desk. Hire someone in Team.</span>');
-    const heat = v.itemHeat.get(it.id);
-    if (heat != null) notes.push(heat < 1 ? `<span class="bad-text">Overheating: running at ${fmt.pct(heat)} speed.</span> Put a cooler within reach.` : '<span class="ok-text">Running cool.</span>');
-    const cool = v.coolers.get(it.id);
-    if (cool) notes.push(cool.gpus ? `Cools ${cool.gpus} GPU${cool.gpus === 1 ? '' : 's'} in reach · load ${fmt.pct(cool.load)}${cool.load > 1 ? ' <span class="bad-text">(overloaded: add another cooler nearby)</span>' : ''}` : 'No GPUs in reach. Move it next to your hardware.');
+    if (d.pf) notes.push(v.thermal < 1 ? `<span class="bad-text">The office is too hot: running at ${fmt.pct(v.thermal)} speed.</span> Add cooling.` : '<span class="ok-text">Running at full speed.</span>');
+    if (d.cooling) notes.push(`The office makes ${fmt.kw(v.heat)} of heat and can remove ${fmt.kw(v.cooling)}.`);
     if (d.rpBonus) {
       const n = s.staff.filter((x) => x.role === 'researcher' && v.seatInfo.get(x.id) && v.seatInfo.get(x.id).desk && Sim.gap(it, v.seatInfo.get(x.id).desk) <= d.radius).length;
       notes.push(`${n} researcher${n === 1 ? '' : 's'} within ${d.radius} tiles`);
@@ -878,14 +943,21 @@
     root.innerHTML = `<div class="backdrop"${dismissable ? ' data-modal="close"' : ''}></div><div class="modal ${kind}" role="dialog" aria-modal="true">${html}</div>`;
     root.hidden = false;
     ui.modal = kind || 'modal';
-    const first = root.querySelector('input, button:not(.x)');
+    const first = root.querySelector('input, textarea:not([readonly]), button:not(.x)');
     if (first) setTimeout(() => first.focus(), 30);
   }
   function closeModal() {
     const root = $('modal-root');
+    const draft = $('feedback-text');
+    if (draft) ui.fbDraft = draft.value; // keep unsent feedback if the modal is dismissed
     root.innerHTML = '';
     root.hidden = true;
     ui.modal = null;
+    // a snapshot paused the game; pick up at the speed the player had
+    if (ui.resumeSpeed != null) {
+      G().setSpeed(ui.resumeSpeed);
+      ui.resumeSpeed = null;
+    }
   }
 
   function showEvent(s) {
@@ -911,9 +983,7 @@
     return dbPromise;
   };
 
-  async function sendRun(button) {
-    const s = G().s;
-    const report = AIT.Report.build(s);
+  async function sendReport(report, button, sentMsg) {
     if (button) {
       button.disabled = true;
       button.textContent = 'Sending…';
@@ -923,13 +993,46 @@
       try {
         await db.doc('runs/' + report.id).set(report);
         closeModal();
-        toast('Run sent. Tell Claude in the chat that it is there.', 'good');
+        toast(sentMsg, 'good');
         return;
       } catch (e) {
         /* fall back to copying */
       }
     }
     showCopy(JSON.stringify(report));
+  }
+  const sendRun = (button) => sendReport(AIT.Report.build(G().s), button, 'Run sent. Tell Claude in the chat that it is there.');
+
+  // ---------- snapshot + feedback, at any moment of a run ----------
+  const FEEDBACK_TAGS = ['Confusing', 'Too slow', 'Too hard', 'Too easy', 'Bug', 'Fun'];
+
+  function showFeedback() {
+    const g = G(), s = g.s;
+    if (ui.resumeSpeed == null) ui.resumeSpeed = g.speed;
+    g.setSpeed(0);
+    openModal(
+      `<div class="eyebrow">Snapshot</div>
+      <h2>Tell Claude what's going on</h2>
+      <p class="small muted">Sends ${esc(s.company)} as it stands on ${fmt.date(s.day)}: ${(s.day / 365).toFixed(1)} years in, ${fmt.dur(s.playMs)} played, with every action and month so far.</p>
+      <div class="field"><label for="feedback-text">What do you think? What's confusing, fun, broken or too slow?</label>
+      <textarea id="feedback-text" rows="5" maxlength="4000" placeholder="Optional">${esc(ui.fbDraft)}</textarea></div>
+      <div class="chips" role="group" aria-label="Quick tags">${FEEDBACK_TAGS.map((t) => `<button class="chip" data-modal="fb-tag" aria-pressed="false">${t}</button>`).join('')}</div>
+      <div class="row gap"><button class="btn primary" data-modal="send-snapshot">Send snapshot</button><button class="btn ghost" data-modal="close">Cancel</button></div>`,
+      'menu feedback',
+    );
+  }
+
+  async function sendSnapshot(button) {
+    const s = G().s;
+    const text = $('feedback-text').value.trim();
+    const tags = [...document.querySelectorAll('#modal-root .chip.on')].map((b) => b.textContent);
+    const base = AIT.Report.build(s); // also gives older saves a runId
+    const id = s.runId + '-snap-' + Date.now().toString(36);
+    const feedback = (tags.length ? `[${tags.join(', ')}] ` : '') + text;
+    // feedback first so it reads at the top of the JSON; a unique id so snapshots never overwrite each other
+    const report = Object.assign({ id, runId: s.runId, snapshot: true, feedback: feedback.trim(), feedbackTags: tags, ui: { tab: ui.tab, speedBefore: ui.resumeSpeed } }, base, { id, sentAt: new Date().toISOString() });
+    await sendReport(report, button, "Snapshot sent. Tell Claude in the chat that it's there.");
+    ui.fbDraft = ''; // sent or shown for copying
   }
 
   function showCopy(text) {
@@ -1099,11 +1202,11 @@
 
   const HELP = `
     <ol class="help">
-      <li><b>Build.</b> Place GPUs, cooling and power in your office. Overheating throttles GPUs and can start fires.</li>
+      <li><b>Build.</b> Place GPUs, cooling and power in your office. Keep heat below cooling or every GPU slows down.</li>
       <li><b>Train.</b> Spend compute (PF-days) to train models. Bigger models score higher on OmniBench.</li>
       <li><b>Deploy.</b> Your live model wins subscribers based on its score against rivals, your hype and your price.</li>
       <li><b>Serve.</b> Subscribers need compute too. Keep them served or they leave.</li>
-      <li><b>Grow.</b> Hire researchers for RP, raise funding rounds, and move to bigger offices.</li>
+      <li><b>Grow.</b> Hire researchers for RP and move to bigger offices. Raising money is optional: it speeds you up but costs a slice of the company.</li>
       <li><b>Win.</b> Research the AGI Blueprint and finish the AGI Project before any rival reaches 100.</li>
     </ol>
     <p class="small muted">Keys: Space pauses, 1–3 set speed, Esc cancels placing. Right-click also cancels. Scroll or pinch to zoom, drag to pan.</p>`;
@@ -1138,7 +1241,7 @@
       `<div class="chapter-art"><img src="${AIT.Render.officePreview(s.officeLevel, s.company)}" alt=""></div>
       <div class="eyebrow">Chapter ${ch.num} of ${F.CHAPTERS.length}</div>
       <h2 class="chapter-title">${ch.title}</h2>
-      <p>${ch.text}</p>
+      <p>${typeof ch.text === 'function' ? ch.text(s) : ch.text}</p>
       <div class="eyebrow">What's new</div>
       <ul class="chapter-new">${ch.news.map((n) => `<li>${n}</li>`).join('')}</ul>
       <div class="row gap"><button class="btn primary" data-modal="close">Let's go</button></div>`,
@@ -1206,7 +1309,7 @@
       ${HELP}
       <div class="row gap wrap"><button class="btn" data-modal="mentor-toggle">Mentor tips: ${AIT.Mentor.enabled(G().s) ? 'on' : 'off'}</button><button class="btn" data-modal="mentor-replay">Replay tutorial</button><button class="btn" data-modal="music-toggle">Music: ${AIT.Sound.music ? 'on' : 'off'}</button></div>
       <div class="row gap wrap"><button class="btn" data-modal="achievements">Achievements · ${D.ACHIEVEMENTS.filter((a) => achievements()[a.id]).length}/${D.ACHIEVEMENTS.length}</button></div>
-      <div class="row gap wrap"><button class="btn" data-modal="send-run">Send this run to Claude</button></div>
+      <div class="row gap wrap"><button class="btn" data-modal="feedback">Send snapshot + feedback</button></div>
       <div class="row gap wrap"><button class="btn" data-modal="save">Save now</button><button class="btn" data-modal="close">Resume</button>${ui.confirm === 'newgame' ? '<button class="btn danger" data-modal="really-new">Yes, start over</button>' : '<button class="btn ghost" data-modal="ask-new">New game</button>'}</div>
       <p class="small muted">The game saves itself every month in this browser.</p>`,
       'menu',
@@ -1283,17 +1386,25 @@
           AIT.Render.celebrate();
         }
         break;
-      case 'pitch':
-        result(A.pitch(s));
+      case 'pitch': {
+        const r = A.pitch(s);
+        toast(r.msg, r.ok && s.funding.offers.length ? 'good' : 'warn');
         break;
+      }
       case 'accept':
-        if (result(A.acceptOffer(s), false)) {
+        if (result(A.acceptOffer(s, id), false)) {
           sfx('coin');
           AIT.Render.celebrate();
         }
         break;
-      case 'decline':
-        result(A.declineOffer(s));
+      case 'push': {
+        const r = A.pushOffer(s, id);
+        toast(r.msg, r.ok ? 'good' : 'warn');
+        sfx(r.ok ? 'coin' : 'error');
+        break;
+      }
+      case 'walk':
+        result(A.walkAway(s));
         break;
       case 'confirm': {
         const key = el.dataset.key;
@@ -1470,6 +1581,7 @@
       ui.confirm = null;
       showMenu();
     });
+    $('feedback-btn').addEventListener('click', () => showFeedback());
     document.querySelectorAll('[data-zoom]').forEach((b) =>
       b.addEventListener('click', () => {
         const z = b.dataset.zoom;
@@ -1514,6 +1626,13 @@
         showNewGame(false);
       } else if (what === 'send-run') {
         sendRun(b);
+      } else if (what === 'feedback') {
+        showFeedback();
+      } else if (what === 'fb-tag') {
+        b.classList.toggle('on');
+        b.setAttribute('aria-pressed', b.classList.contains('on'));
+      } else if (what === 'send-snapshot') {
+        sendSnapshot(b);
       } else if (what === 'copy-report') {
         const ta = $('report-text');
         const done = () => toast('Copied. Paste it into a chat with Claude.', 'good');
@@ -1561,6 +1680,7 @@
 
     window.addEventListener('keydown', (e) => {
       if (e.target.matches('input, textarea')) return;
+      if (e.key !== 'Escape' && e.target.closest('#modal-root')) return; // Space presses the focused modal button
       const g = G();
       if (e.key === 'Escape') {
         if (ui.modal && !String(ui.modal).startsWith('event') && !String(ui.modal).startsWith('over')) closeModal();

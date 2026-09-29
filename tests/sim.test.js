@@ -13,6 +13,7 @@ function blank(level = 0, seed = 1) {
   s.officeLevel = level;
   return s;
 }
+const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} is not ${b}`);
 const place = (s, type, x, y) => {
   const r = A.place(s, type, x, y);
   assert.ok(r.ok, `placing ${type} at ${x},${y}: ${r.msg}`);
@@ -38,36 +39,23 @@ test('gap measures tiles between footprints', () => {
   assert.equal(Sim.gap(big, { type: 'desk', x: 3, y: 3 }), 0);
 });
 
-test('coolers only cool GPUs within their reach', () => {
+test('cooling is building-wide: heat above cooling slows every GPU', () => {
   const s = blank(0);
   for (let x = 0; x < 5; x++) for (let y = 0; y < 2; y++) place(s, 'rig', x, y);
   // 10 rigs make 8 kW; the garage alone removes 5 kW
   let v = Sim.derive(s);
+  near(v.heat, 8);
+  near(v.cooling, 5);
+  near(v.thermal, 5 / 8);
   assert.equal(v.hotItems, 10);
-  assert.ok(v.thermal < 0.7);
+  near(v.effPF, 10 * (5 / 8));
 
-  const far = place(s, 'ac', 5, 5);
+  // where the cooler stands does not matter
+  place(s, 'ac', 5, 5);
   v = Sim.derive(s);
-  assert.equal(v.coolers.get(far.id).gpus, 0, 'an AC four rows away reaches nothing');
-  assert.equal(v.hotItems, 10);
-
-  A.sell(s, far.id);
-  const near = place(s, 'ac', 2, 2);
-  v = Sim.derive(s);
-  assert.equal(v.coolers.get(near.id).gpus, 10);
-  assert.equal(v.hotItems, 0);
+  near(v.cooling, 13);
   assert.equal(v.thermal, 1);
-});
-
-test('a cooler is shared by every GPU in its reach', () => {
-  const s = blank(1);
-  place(s, 'fan', 0, 0);
-  place(s, 'workstation', 1, 0);
-  let v = Sim.derive(s);
-  const one = v.itemHeat.get(s.items[1].id);
-  for (let i = 0; i < 12; i++) place(s, 'workstation', 1 + (i % 4), 1 + Math.floor(i / 4));
-  v = Sim.derive(s);
-  assert.ok(v.itemHeat.get(s.items[1].id) < one, 'more GPUs nearby means less cooling each');
+  assert.equal(v.hotItems, 0);
 });
 
 test('whiteboards help researchers within 2 tiles of their desk', () => {
@@ -174,6 +162,105 @@ test('harder difficulty speeds rivals up', () => {
   assert.ok(relaxed < normal && normal < hard);
   assert.equal(Sim.newGame({ difficulty: 'hard' }).cash, D.DIFFICULTY.hard.cash);
   assert.equal(Sim.newGame({ mode: 'sandbox' }).cash, 10e6);
+});
+
+// a lab with a model and some traction, ready to pitch
+function pitchable(seed, subs) {
+  const s = blank(1, seed);
+  s.cash = 500e3;
+  s.models.push({ id: 'm1', name: 'Test', size: 'small', cap: 17, appeal: 1, arpu: 1, infer: 1, day: 0 });
+  s.flagshipId = 'm1';
+  s.rounds = ['preseed'];
+  s.subs = subs;
+  return s;
+}
+
+test('raising is optional: offices only cost money', () => {
+  const s = blank(1);
+  s.cash = 1e6;
+  assert.equal(s.rounds.length, 0);
+  assert.equal(A.moveOffice(s).ok, true);
+  assert.equal(s.officeLevel, 2);
+  s.cash = 10;
+  assert.equal(A.moveOffice(s).msg, 'Not enough cash');
+});
+
+test('investor interest decides how many offers you get', () => {
+  const hot = pitchable(3, 1500);
+  assert.equal(Sim.fundingView(hot, Sim.derive(hot)).label, 'Hot');
+  assert.equal(A.pitch(hot).ok, true);
+  assert.equal(hot.funding.offers.length, 3);
+  assert.equal(new Set(hot.funding.offers.map((o) => o.type)).size, 3, 'three different kinds of investor');
+
+  const cold = pitchable(3, 100);
+  assert.equal(Sim.fundingView(cold, Sim.derive(cold)).label, 'Cold');
+  assert.equal(A.pitch(cold).ok, true);
+  assert.equal(cold.funding.offers.length, 0);
+  assert.equal(A.pitch(cold).ok, false, 'investors want to wait after passing');
+});
+
+test('accepting an offer closes the round and applies its terms', () => {
+  const s = pitchable(4, 1500);
+  A.pitch(s);
+  const o = s.funding.offers.find((x) => x.type === 'bigtech');
+  const cash = s.cash;
+  assert.equal(A.acceptOffer(s, o.oid).ok, true);
+  assert.equal(s.cash, cash + o.raise);
+  assert.ok(Math.abs(s.equity - (1 - o.dilution)) < 1e-9);
+  assert.deepEqual(s.rounds, ['preseed', 'seed']);
+  assert.equal(s.funding.offers.length, 0);
+  assert.ok(s.cloud && s.cloud.pf > 0, 'the Big Tech partner throws in cloud compute');
+});
+
+test('walking away makes the next offers smaller', () => {
+  const s = pitchable(5, 1500);
+  const before = Sim.fundingView(s, Sim.derive(s)).mult;
+  A.pitch(s);
+  assert.equal(A.walkAway(s).ok, true);
+  assert.equal(s.funding.offers.length, 0);
+  assert.ok(s.funding.last && s.funding.last.declined);
+  const after = Sim.fundingView(s, Sim.derive(s));
+  assert.ok(after.mult < before, 'investors remember');
+  assert.equal(after.canPitch, false);
+  s.day += 31;
+  assert.equal(Sim.fundingView(s, Sim.derive(s)).canPitch, true);
+});
+
+test('pushing for a better price either works or loses that investor', () => {
+  let won = 0, lost = 0;
+  for (let seed = 10; seed < 40; seed++) {
+    const s = pitchable(seed, 1500);
+    A.pitch(s);
+    const o = s.funding.offers[0];
+    const pre = o.pre, dil = o.dilution;
+    const r = A.pushOffer(s, o.oid);
+    if (r.ok) {
+      won++;
+      assert.ok(o.pre > pre && o.dilution < dil);
+      assert.equal(A.pushOffer(s, o.oid).ok, false, 'only one push per investor');
+    } else {
+      lost++;
+      assert.ok(!s.funding.offers.includes(o));
+    }
+  }
+  assert.ok(won > 0 && lost > 0);
+});
+
+test('version 2 saves migrate their single term sheet', () => {
+  const s = pitchable(6, 1500);
+  const old = JSON.parse(JSON.stringify(s));
+  old.v = 2;
+  delete old.funding;
+  old.roundCd = 12;
+  old.offer = { id: 'seed', name: 'Seed', pre: 5e6, raise: 1e6, dilution: 1 / 6, expires: 20 };
+  const m = Sim.migrate(old);
+  assert.equal(m.v, Sim.VERSION);
+  assert.equal(m.offer, undefined);
+  assert.equal(m.funding.cd, 12);
+  assert.equal(m.funding.offers.length, 1);
+  const g = Object.assign(Sim.newGame(), m);
+  assert.equal(A.acceptOffer(g, m.funding.offers[0].oid).ok, true);
+  assert.ok(g.rounds.includes('seed'));
 });
 
 test('the run report includes the new fields', () => {

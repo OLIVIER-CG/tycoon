@@ -12,6 +12,7 @@
 
   const count = (s, t) => s.items.filter((i) => i.type === t).length;
   const money = (n) => AIT.fmt.money(n);
+  const kw = (n) => AIT.fmt.kw(n);
   const seats = (s) => s.items.reduce((a, i) => a + (D.ITEMS[i.type].seats || 0), 0);
   const cheapestTech = (s) =>
     D.TECHS.filter((t) => !s.techs[t.id] && t.req.every((r) => s.techs[r])).sort((a, b) => a.cost - b.cost)[0];
@@ -48,8 +49,8 @@
     {
       id: 'heat',
       lines: [
-        'Good. Every GPU turns power into heat. The building cools a little on its own, but that runs out fast.',
-        'A cooler only reaches GPUs close to it: a box fan covers the tiles right around it, an AC unit two tiles out. When you place one, a blue square shows its reach. Overheating GPUs glow red and slow down.',
+        'Good. Every GPU turns power into heat. Keep an eye on the Heat vs cooling bar in Build.',
+        'If heat goes above cooling, all your GPUs glow red and slow down. Box fans and AC units are cheap. It does not matter where you put them.',
       ],
       go: 'build:cooling',
       highlight: ['[data-coach="heat"]'],
@@ -88,9 +89,12 @@
     },
     {
       id: 'raise',
-      lines: ['A real model means investors will take your call. Open Finance, pitch investors, then accept the term sheet.'],
-      task: 'Raise your Pre-seed round',
-      done: (s) => s.rounds.includes('preseed'),
+      lines: [
+        'A real model means investors will take your call. Raising money is optional: you sell a slice of the company for cash to grow faster. The slice you keep is what you are worth at the end.',
+        'Open Finance and pitch. You can take an offer, push for a better price, or walk away and grow on revenue instead.',
+      ],
+      task: 'Pitch investors',
+      done: (s) => s.rounds.length > 0 || s.funding.pitches > 0,
       go: 'finance',
       highlight: ['#tabs [data-tab="finance"]', '[data-act="pitch"]', '[data-act="accept"]'],
     },
@@ -127,8 +131,8 @@
     },
     {
       id: 'overheat', urgent: true,
-      when: (s, v) => v.hotItems > 0 && v.thermal < 0.97,
-      lines: (s, v) => [`It's getting hot in here. ${v.hotItems} of your GPUs are overheating, the ones glowing red. Coolers only reach GPUs inside their square, so put a fan or AC unit right next to the hot ones.`],
+      when: (s, v) => v.thermal < 0.97,
+      lines: (s, v) => [`It's getting hot in here. Your GPUs make ${kw(v.heat)} of heat and you can only remove ${kw(v.cooling)}, so everything runs at ${Math.round(v.thermal * 100)}% speed. Add fans or AC units from Build › Cooling.`],
       go: 'build:cooling',
       highlight: ['[data-coach="heat"]', '.chip[data-id="cooling"]'],
     },
@@ -170,8 +174,8 @@
     },
     {
       id: 'offer',
-      when: (s) => !!s.offer,
-      lines: ['You have a term sheet. Dilution is the share of the company you give up. Take the money if you need it. Declining makes investors wait 30 days.'],
+      when: (s) => s.funding.offers.length > 0,
+      lines: ['Term sheets are in. Each investor wants something different: a famous VC brings hype, a Big Tech partner throws in free compute, a friendly fund takes less of the company. Pushing for a better price works more often when you have plenty of cash left, but the investor may walk.'],
       go: 'finance',
     },
     {
@@ -188,7 +192,7 @@
     },
     {
       id: 'loft',
-      when: (s) => s.officeLevel === 0 && s.rounds.includes('preseed') && s.cash > 70000,
+      when: (s) => s.officeLevel === 0 && s.models.length > 0 && s.cash > 70000,
       lines: ["The garage is nearly out of power. The Downtown Loft has eight times the power and room for 4-GPU workstations. You'll find it at the top of Build."],
       go: 'build',
     },
@@ -218,8 +222,8 @@
     },
     {
       id: 'series_a',
-      when: (s) => s.officeLevel >= 1 && !s.rounds.includes('a') && s.models.some((m) => m.size === 'small'),
-      lines: ['Next milestone: a Series A. It needs an OmniBench score of 25, or $150k a month in revenue. A Medium model gets you there. Distributed Training unlocks it.'],
+      when: (s) => s.officeLevel === 1 && s.models.some((m) => m.size === 'small'),
+      lines: ['The Office Floor costs $750k to move into and $80k a month. You can save that up from revenue or raise a Series A. Investors pay the most once you reach OmniBench 25 or $150k a month, and a Medium model gets you there.'],
       go: 'finance',
     },
     {
@@ -290,9 +294,9 @@
     },
     {
       id: 'product',
-      when: (s) => !!s.flagshipId && D.PRODUCTS.some((p) => s.techs[p.tech] && !s.products[p.id].live),
+      when: (s) => !!s.flagshipId && D.PRODUCTS.some((p) => s.techs[p.tech] && !s.products[p.id].live && s.cash > p.launch * 2),
       lines: (s) => {
-        const p = D.PRODUCTS.find((x) => s.techs[x.tech] && !s.products[x.id].live);
+        const p = D.PRODUCTS.find((x) => s.techs[x.tech] && !s.products[x.id].live && s.cash > x.launch * 2);
         return [`You can now sell more than a chat app. ${p.name} is ready to launch from Market. It has its own customers and its own price, and it shares your model's score with the rivals.`];
       },
       go: 'market',
