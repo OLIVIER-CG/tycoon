@@ -6,8 +6,10 @@
   const D = AIT.DATA, Sim = AIT.Sim;
 
   const NAME = 'Mira Castell';
-  const TIP_COOLDOWN_MS = 45000; // real time between non-urgent tips
+  const TIP_COOLDOWN_MS = 45000; // real time between non-urgent tips at 1×, shorter at higher speeds
+  const TIP_COOLDOWN_MIN_MS = 12000;
   const TIP_COOLDOWN_DAYS = 20; // and in-game days
+  const SPEED_DAYS = [0, 1, 3, 8]; // days per second at each speed, as in main.js
   const TYPE_CPS = 70; // typewriter speed, characters per second
 
   const count = (s, t) => s.items.filter((i) => i.type === t).length;
@@ -38,19 +40,19 @@
     },
     {
       id: 'rigs',
-      lines: ['Open Build, pick Gaming Rig, then tap three empty floor tiles. On a computer you can drag across tiles to place several at once.'],
+      lines: ['Open Build, pick Gaming Rig in the dock under the office, then tap three empty floor tiles. On a computer you can drag across tiles to place several at once.'],
       task: 'Place 3 more Gaming Rigs',
       progress: (s) => `${Math.min(3, Math.max(0, count(s, 'rig') - 1))}/3`,
       done: (s) => count(s, 'rig') >= 4,
       after: () => AIT.Render.setTool(null),
       go: 'build:compute',
-      highlight: ['#tabs [data-tab="build"]', '.chip[data-id="compute"]', '.item[data-id="rig"]'],
+      highlight: ['#rail [data-screen="build"]', '#dock [data-cat="compute"]', '#dock [data-item="rig"]'],
     },
     {
       id: 'heat',
       lines: [
         'Good. Every GPU turns power into heat. Keep an eye on the Heat vs cooling bar in Build.',
-        'If heat goes above cooling, all your GPUs glow red and slow down. Box fans and AC units are cheap. It does not matter where you put them.',
+        'If heat goes above cooling, all your GPUs glow red and slow down. Box fans and AC units are cheap, and it does not matter where you put them. The Sunset fog helps, but only a little.',
       ],
       go: 'build:cooling',
       highlight: ['[data-coach="heat"]'],
@@ -61,7 +63,7 @@
       task: 'Start training a Tiny model',
       done: (s) => !!s.training || s.models.length > 0,
       go: 'models',
-      highlight: ['#tabs [data-tab="models"]', '[data-act="start-train"]'],
+      highlight: ['#rail [data-screen="models"]', '[data-act="start-train"]'],
     },
     {
       id: 'wait',
@@ -73,11 +75,11 @@
     },
     {
       id: 'deploy',
-      lines: ['Your first model! It scores around 8 on OmniBench. The big labs sit near 25, but everyone starts somewhere. Press Deploy so people can subscribe.'],
+      lines: ['Your first model! It scores around 8 on OmniBench. The big labs sit in the high 20s, but everyone starts somewhere. Press Deploy so people can subscribe.'],
       task: 'Deploy your model',
       done: (s) => !!s.flagshipId,
       go: 'models',
-      highlight: ['#tabs [data-tab="models"]', '[data-act="deploy"]'],
+      highlight: ['#rail [data-screen="models"]', '[data-act="deploy"]'],
     },
     {
       id: 'subs',
@@ -85,38 +87,38 @@
         "You're live. Subscribers pay $20 a month. How many you get depends on your OmniBench score against rivals, your hype and your price.",
         'Every subscriber also needs compute. The Auto split in Models serves them first and trains with whatever is left.',
       ],
-      highlight: ['#hud-subs'],
+      highlight: ['#res-subs'],
     },
     {
       id: 'raise',
       lines: [
         'A real model means investors will take your call. Raising money is optional: you sell a slice of the company for cash to grow faster. The slice you keep is what you are worth at the end.',
-        'Open Finance and pitch. You can take an offer, push for a better price, or walk away and grow on revenue instead.',
+        'Open Money and pitch. You can take an offer, push for a better price, or walk away and grow on revenue instead.',
       ],
       task: 'Pitch investors',
       done: (s) => s.rounds.length > 0 || s.funding.pitches > 0,
       go: 'finance',
-      highlight: ['#tabs [data-tab="finance"]', '[data-act="pitch"]', '[data-act="accept"]'],
+      highlight: ['#rail [data-screen="finance"]', '[data-act="pitch"]', '[data-act="accept"]'],
     },
     {
       id: 'hire',
-      lines: ['Money is for people and GPUs. Build a desk from Build › Office, then hire a researcher from Team. Researchers earn research points.'],
+      lines: ['Money is for people and GPUs. Build a standing desk from Build › Office, then hire a researcher from Team. Researchers earn research points.'],
       task: 'Hire your first employee',
       done: (s) => s.staff.length >= 2,
       go: (s) => (seats(s) > s.staff.length ? 'team' : 'build:office'),
       highlight: (s) =>
         seats(s) > s.staff.length
-          ? ['#tabs [data-tab="team"]', '[data-act="hire"]']
-          : ['#tabs [data-tab="build"]', '.chip[data-id="office"]', '.item[data-id="desk"]'],
+          ? ['#rail [data-screen="team"]', '[data-act="hire"]']
+          : ['#rail [data-screen="build"]', '#dock [data-cat="office"]', '#dock [data-item="desk"]'],
     },
     {
       id: 'research',
       lines: [
-        'Research points unlock bigger models and better hardware. Scaling Laws comes first and unlocks Small models, but a Small model needs about 6,000 PF-days. A garage cannot do that. Raise money, move to the Loft and fill it with workstations first.',
-        "That's the basics. The card in the top-left always shows your next goal, and I'll drop in when something important comes up. Go build something.",
+        'Research points unlock bigger models and better hardware. Scaling Laws comes first and unlocks Small models, but a Small model needs about 6,000 PF-days. A garage cannot do that. Move into a flat in the Mission and fill it with workstations first.',
+        "That's the basics. HQ always shows your next goal and anything that needs you, and I'll drop in when something important comes up. This is a long road from the Sunset to Treasure Island. Go build something.",
       ],
       go: 'research',
-      highlight: ['#tabs [data-tab="research"]'],
+      highlight: ['#rail [data-screen="research"]'],
     },
   ];
 
@@ -126,7 +128,7 @@
     {
       id: 'broke', urgent: true,
       when: (s) => s.stats.negDays > 0,
-      lines: ["You're out of cash. You have 90 days before the company folds. Sell hardware you don't need, let someone go, or raise money in Finance."],
+      lines: ["You're out of cash. You have 90 days before the company folds. Sell hardware you don't need, let someone go, or raise money in Money."],
       go: 'finance',
     },
     {
@@ -134,7 +136,7 @@
       when: (s, v) => v.thermal < 0.97,
       lines: (s, v) => [`It's getting hot in here. Your GPUs make ${kw(v.heat)} of heat and you can only remove ${kw(v.cooling)}, so everything runs at ${Math.round(v.thermal * 100)}% speed. Add fans or AC units from Build › Cooling.`],
       go: 'build:cooling',
-      highlight: ['[data-coach="heat"]', '.chip[data-id="cooling"]'],
+      highlight: ['[data-coach="heat"]', '#dock [data-cat="cooling"]'],
     },
     {
       id: 'cut_costs', urgent: true,
@@ -157,7 +159,7 @@
     {
       id: 'power',
       when: (s, v) => v.powerFactor < 1,
-      lines: ["You're drawing more power than the building can supply, so every GPU slows down. Battery walls add a little capacity. Bigger offices and substations add a lot."],
+      lines: ["You're drawing more power than the building can supply, so every GPU slows down. Battery walls add a little capacity. Bigger offices and substations add a lot. PG&E is not coming to save you."],
       go: 'build:power',
     },
     {
@@ -169,13 +171,13 @@
     {
       id: 'overhired',
       when: (s, v) => s.staff.length >= 3 && v.payroll > Math.max(v.mrr, 1000) * 2.5 && s.cash < v.payroll * 8,
-      lines: (s, v) => [`Your payroll is ${money(v.payroll)} a month and revenue is ${money(v.mrr)}. Hire when there is work waiting: GPUs to train on, or research you need. The Team tab shows what each person adds.`],
+      lines: (s, v) => [`Your payroll is ${money(v.payroll)} a month and revenue is ${money(v.mrr)}. Hire when there is work waiting: GPUs to train on, or research you need. Team shows what each person adds.`],
       go: 'team',
     },
     {
       id: 'offer',
       when: (s) => s.funding.offers.length > 0,
-      lines: ['Term sheets are in. Each investor wants something different: a famous VC brings hype, a Big Tech partner throws in free compute, a friendly fund takes less of the company. Pushing for a better price works more often when you have plenty of cash left, but the investor may walk.'],
+      lines: ['Term sheets are in from Sand Hill Road. Each investor wants something different: a famous VC brings hype, a Big Tech partner throws in free compute, a friendly fund takes less of the company. Pushing for a better price works more often when you have plenty of cash left, but the investor may walk, and walking away cools the next pitch.'],
       go: 'finance',
     },
     {
@@ -187,13 +189,13 @@
     {
       id: 'desks',
       when: (s, v) => s.staff.length >= 2 && v.seats <= s.staff.length && s.cash > 50000,
-      lines: ["Every desk is taken, so you can't hire anyone else. Desks are cheap. Find them in Build › Office."],
+      lines: ["Every desk is taken, so you can't hire anyone else. Standing desks are cheap. Find them in Build › Office."],
       go: 'build:office',
     },
     {
       id: 'loft',
-      when: (s) => s.officeLevel === 0 && s.models.length > 0 && s.cash > 70000,
-      lines: ["The garage is nearly out of power. The Downtown Loft has eight times the power and room for 4-GPU workstations. You'll find it at the top of Build."],
+      when: (s) => s.officeLevel === 0 && s.models.length > 0 && s.cash > 30000,
+      lines: ["The garage is nearly out of power. The Victorian flat in the Mission has three times the power and room for 4-GPU workstations. You'll find it in Build, under your current office."],
       go: 'build',
     },
     {
@@ -202,7 +204,7 @@
         const team = s.staff.filter((p) => !p.founder);
         return team.length >= 2 && team.reduce((a, p) => a + p.morale, 0) / team.length < 45;
       },
-      lines: ['Your team is unhappy. Low morale slows work, and people quit below 25%. Coffee machines, couches and arcade cabinets help, and so does hype.'],
+      lines: ['Your team is unhappy. Low morale slows work, and people quit below 25%. A pour-over bar, bean bags, a pinball machine or an office dog near their desks helps, and so does hype.'],
       go: 'build:comfort',
     },
     {
@@ -216,26 +218,30 @@
     },
     {
       id: 'idle_gpu',
-      when: (s) => !s.training && s.models.length > 0 && s.day - lastModelDay(s) > 30 && s.cash > 20000,
-      lines: ["Your GPUs aren't training anything. Idle compute only earns a trickle of research. Start another run in Models."],
-      go: 'models',
+      // only when a clearly better model is within reach, or the nudge is noise
+      when: (s, v) => !s.training && s.models.length > 0 && s.day - lastModelDay(s) > 30 && !!Sim.bestNextRun(s, v),
+      lines: (s, v) => {
+        const run = Sim.bestNextRun(s, v);
+        return [`Your GPUs aren't training anything, and ${run.size.name === 'XL' || /^[AEIOU]/.test(run.size.name) ? 'an' : 'a'} ${run.size.name} run would score about ${Math.round(run.exp)} in ${run.days} days. Idle compute only earns a trickle of research.`];
+      },
+      go: 'models:run',
     },
     {
       id: 'series_a',
-      when: (s) => s.officeLevel === 1 && s.models.some((m) => m.size === 'small'),
-      lines: ['The Office Floor costs $750k to move into and $80k a month. You can save that up from revenue or raise a Series A. Investors pay the most once you reach OmniBench 25 or $150k a month, and a Medium model gets you there.'],
+      when: (s) => s.officeLevel === 2 && s.models.some((m) => m.size === 'small'),
+      lines: ['Mission Bay costs $1.2M to move into and $100k a month. You can save that up from revenue or raise a Series A. Investors pay the most once you reach OmniBench 28 or $150k a month, and a Medium model gets you there.'],
       go: 'finance',
     },
     {
       id: 'hype',
       when: (s, v) => v.flagship && s.day > 90 && s.hype < 12,
-      lines: ['Hype fades every day, and it drives both users and valuation. Campaigns in Market bring it back. The hype thread is free.'],
+      lines: ['Hype fades every day, and it drives both users and valuation. Campaigns in Market bring it back. A launch thread is free.'],
       go: 'market',
     },
     {
       id: 'price',
       when: (s) => s.subs > 5000,
-      lines: ['You can change your subscription price in Market. Cheaper plans win more users, but each one earns less and needs compute.'],
+      lines: ['You can change your subscription price in Market. The chart there shows what each price would earn before you commit. Cheaper plans win more users, but each one earns less and needs compute.'],
       go: 'market',
     },
     {
@@ -252,8 +258,8 @@
     },
     {
       id: 'floor',
-      when: (s) => s.officeLevel >= 2,
-      lines: ['Welcome to the Office Floor. 8-GPU Servers live here, and Substations add power when you outgrow the building.'],
+      when: (s) => s.officeLevel >= 3,
+      lines: ['Welcome to Mission Bay. 8-GPU Servers and chillers fit here, and substations add power when you outgrow the building.'],
       go: 'build:compute',
     },
     {
@@ -270,8 +276,8 @@
     },
     {
       id: 'campus',
-      when: (s) => s.officeLevel >= 3,
-      lines: ['A campus means GPU racks, gas turbines and chillers. Plan for Liquid Cooling and Custom Silicon in R&D. You will need both.'],
+      when: (s) => s.officeLevel >= 4,
+      lines: ['A tower on Montgomery Street means GPU racks. Plan for Liquid Cooling and Custom Silicon in R&D: the SuperPods in the Presidio need both.'],
       go: 'research',
     },
     {
@@ -282,8 +288,8 @@
     },
     {
       id: 'hyperscale',
-      when: (s) => s.officeLevel >= 4,
-      lines: ['The Hyperscale Campus. Wafer-scale engines, immersion tanks and modular reactors are your endgame hardware.'],
+      when: (s) => s.officeLevel >= 5,
+      lines: ['The Presidio. SuperPods, gas turbines and wafer-scale engines are your endgame hardware. After this there is only Treasure Island.'],
       go: 'build:compute',
     },
     {
@@ -304,7 +310,7 @@
     {
       id: 'alignment',
       when: (s, v) => !!s.techs.constitutional || (v.topRival && v.topRival.cap >= 55),
-      lines: ['People are starting to ask whether your models are safe. The Race tab shows your alignment score. Safety staff, safety research and your choices in a crisis all count, and they decide how the world reacts if you reach AGI.'],
+      lines: ['People are starting to ask whether your models are safe. The Race screen shows your alignment score. Safety staff, safety research and your choices in a crisis all count, and they decide how the world reacts if you reach AGI.'],
       go: 'race',
     },
   ];
@@ -534,7 +540,10 @@
     }
 
     const now = performance.now();
-    const cooling = now - m.lastClosedAt < TIP_COOLDOWN_MS || s.day - m.lastClosedDay < TIP_COOLDOWN_DAYS;
+    // at 8× the real-time wait alone would skip whole years of tips
+    const speed = SPEED_DAYS[(AIT.game && AIT.game.speed) || 1] || 1;
+    const waitMs = Math.max(TIP_COOLDOWN_MIN_MS, TIP_COOLDOWN_MS / speed);
+    const cooling = now - m.lastClosedAt < waitMs || s.day - m.lastClosedDay < TIP_COOLDOWN_DAYS;
     for (const tip of TIPS) {
       if (st.seen[tip.id] != null || (cooling && !tip.urgent) || !tip.when(s, v)) continue;
       st.seen[tip.id] = s.day;

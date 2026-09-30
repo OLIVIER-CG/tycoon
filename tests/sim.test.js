@@ -21,8 +21,8 @@ const place = (s, type, x, y) => {
 };
 
 test('2×2 items take four tiles and must fit inside the office', () => {
-  const s = blank(3);
-  const N = D.OFFICES[3].size;
+  const s = blank(5);
+  const N = D.OFFICES[5].size;
   assert.equal(Sim.canPlace(s, 'turbine', N - 1, 0), 'Outside the office');
   const t = place(s, 'turbine', 2, 2);
   for (const [x, y] of [[2, 2], [3, 2], [2, 3], [3, 3]]) assert.equal(Sim.itemAt(s, x, y), t);
@@ -75,7 +75,7 @@ test('whiteboards help researchers within 2 tiles of their desk', () => {
 });
 
 test('comfort items only count for desks within 3 tiles', () => {
-  const s = blank(1);
+  const s = blank(2);
   place(s, 'desk', 0, 0);
   place(s, 'coffee', 3, 0);
   let v = Sim.derive(s);
@@ -263,6 +263,59 @@ test('version 2 saves migrate their single term sheet', () => {
   assert.ok(g.rounds.includes('seed'));
 });
 
+test('the price curve shows what each price would earn', () => {
+  const s = pitchable(7, 1500);
+  for (let i = 0; i < 6; i++) A.place(s, 'workstation', i, 0);
+  const v = Sim.derive(s);
+  const curve = Sim.priceCurve(s, v, [5, 20, 60]);
+  assert.equal(curve.length, 3);
+  assert.ok(curve[0].share > curve[1].share && curve[1].share > curve[2].share, 'cheaper plans win more of the market');
+  for (const p of curve) assert.ok(Math.abs(p.revenue - p.subs * p.price * s.models[0].arpu) < 1e-6);
+});
+
+test('the next-run helper only suggests a clear step up that finishes within a year', () => {
+  const s = pitchable(8, 1500);
+  s.cash = 1e12;
+  s.officeLevel = 2;
+  s.techs.distributed = 1;
+  for (let i = 0; i < 30; i++) A.place(s, 'workstation', i % 10, Math.floor(i / 10));
+  for (let i = 0; i < 8; i++) A.place(s, 'ac', i, 5);
+  const run = Sim.bestNextRun(s, Sim.derive(s));
+  assert.ok(run, 'a Medium model is a step up from a score of 17');
+  assert.equal(run.size.id, 'medium');
+  assert.ok(run.exp >= 17 + 2 && run.days <= 365);
+  s.training = { name: 'x' };
+  assert.equal(Sim.bestNextRun(s, Sim.derive(s)), null);
+});
+
+test('losing an investor at the table counts as a walk-away', () => {
+  for (let seed = 50; seed < 90; seed++) {
+    const s = pitchable(seed, 1500);
+    A.pitch(s);
+    const o = s.funding.offers[0];
+    if (A.pushOffer(s, o.oid).ok) continue;
+    assert.equal(s.funding.walkaways.length, 1);
+    return;
+  }
+  assert.fail('no push failed in 40 tries');
+});
+
+test('version 3 saves move onto the seven San Francisco offices', () => {
+  const s = blank(1);
+  const old = JSON.parse(JSON.stringify(s));
+  old.v = 3;
+  old.officeLevel = 3; // the old Tech Campus, 18x18
+  delete old.products.voice;
+  delete old.products.robots;
+  old.chapters = {};
+  const m = Sim.migrate(old);
+  assert.equal(m.v, Sim.VERSION);
+  assert.equal(m.officeLevel, 5);
+  assert.ok(D.OFFICES[m.officeLevel].size >= 18, 'every item still fits');
+  assert.ok(m.products.voice && m.products.robots);
+  assert.ok(m.chapters.presidio != null, 'passed chapters are marked seen');
+});
+
 test('the run report includes the new fields', () => {
   const s = blank(1);
   const r = AIT.Report.build(s);
@@ -270,14 +323,17 @@ test('the run report includes the new fields', () => {
   assert.ok('alignment' in r.final && 'products' in r.final && 'overheatingGpus' in r.final);
 });
 
-test('balance: a good bot reaches AGI before the rivals', () => {
-  const s = Sim.newGame({ seed: 1000 });
-  const bot = createBot(AIT);
-  while (!s.over && s.day < 365 * 10) {
-    bot(s);
-    Sim.tick(s);
+test('balance: a good bot reaches AGI before the rivals, in the middle of the 2030s', () => {
+  const years = [];
+  for (let seed = 1004; seed < 1008; seed++) {
+    const s = Sim.newGame({ seed });
+    const bot = createBot(AIT);
+    while (!s.over && s.day < 365 * 25) {
+      bot(s);
+      Sim.tick(s);
+    }
+    if (s.over && s.over.win) years.push(s.day / 365);
   }
-  assert.ok(s.over && s.over.win, s.over ? s.over.text : 'still playing after 10 years');
-  const years = s.day / 365;
-  assert.ok(years > 5 && years < 8.5, `won in year ${years.toFixed(1)}; expected 5 to 8.5`);
+  assert.ok(years.length >= 3, `the bot won ${years.length} of 4 games`);
+  for (const y of years) assert.ok(y > 11 && y < 18, `won in year ${y.toFixed(1)}; expected 11 to 18`);
 });

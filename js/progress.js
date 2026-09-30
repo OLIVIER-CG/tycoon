@@ -12,8 +12,8 @@
     { id: 'cat:compute', when: () => true },
     { id: 'cat:cooling', when: () => true },
     { id: 'hud:bench', when: (s) => s.models.length > 0 },
-    { id: 'tab:race', when: (s) => s.models.length > 0, msg: 'New tab: Race. See how your models rank against the big labs.' },
-    { id: 'tab:finance', when: (s) => s.models.length > 0, msg: 'New tab: Finance. Investors are ready to listen.' },
+    { id: 'tab:race', when: (s) => s.models.length > 0, msg: 'New screen: Race. See how your models rank against the other labs in the Bay.' },
+    { id: 'tab:finance', when: (s) => s.models.length > 0, msg: 'New screen: Money. Investors on Sand Hill Road are ready to listen.' },
     { id: 'hud:subs', when: (s) => !!s.flagshipId },
     { id: 'hud:hype', when: (s) => !!s.flagshipId },
     // raising money or finding real users both mean it is time to grow
@@ -22,8 +22,8 @@
     { id: 'cat:office', when: (s) => s.rounds.length > 0 || s.subs >= 250 || s.staff.length > 1 },
     { id: 'office:next', when: (s) => s.rounds.length > 0 || s.subs >= 250 },
     { id: 'cat:comfort', when: (s) => s.staff.length > 1, msg: 'New in Build: comfort items. Happy people work faster.' },
-    { id: 'tab:research', when: (s) => s.staff.length > 1 || s.rp >= 40, msg: 'New tab: R&D. Spend research points on new technology.' },
-    { id: 'tab:market', when: (s) => !!s.flagshipId && s.subs >= 200, msg: 'New tab: Market. Set your price and run campaigns.' },
+    { id: 'tab:research', when: (s) => s.staff.length > 1 || s.rp >= 40, msg: 'New screen: R&D. Spend research points on new technology.' },
+    { id: 'tab:market', when: (s) => !!s.flagshipId && s.subs >= 200, msg: 'New screen: Market. Set your price and run campaigns.' },
     { id: 'cat:power', when: (s, v) => s.officeLevel >= 1 || v.power > v.powerCap * 0.8, msg: 'New in Build: power. Add capacity before the lights flicker.' },
   ];
 

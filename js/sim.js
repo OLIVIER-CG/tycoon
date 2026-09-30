@@ -29,7 +29,7 @@
   const RIVAL_BY_ID = Object.fromEntries(D.RIVALS.map((r) => [r.id, r]));
 
   const hooks = { toast: null, month: null, over: null };
-  const VERSION = 3;
+  const VERSION = 4;
 
   // ---------- footprints and seats ----------
   const sizeOf = (it) => (it.legacy ? 1 : D.ITEMS[it.type].size || 1);
@@ -96,6 +96,15 @@
       delete obj.roundCd;
       obj.v = 3;
     }
+    if (obj.v < 4) {
+      // v0.2 moved to seven San Francisco offices; old offices map onto the closest new one
+      // (each new office is at least as big as the old one, so every item still fits)
+      obj.officeLevel = [0, 2, 3, 5, 6][obj.officeLevel] != null ? [0, 2, 3, 5, 6][obj.officeLevel] : obj.officeLevel;
+      obj.products = Object.assign(productDefaults(), obj.products || {});
+      // chapters the lab has already passed stay quiet instead of all opening at once
+      if (AIT.FLAVOR && obj.chapters) for (const c of AIT.FLAVOR.CHAPTERS) if (c.when(obj)) obj.chapters[c.id] = obj.chapters[c.id] != null ? obj.chapters[c.id] : obj.day;
+      obj.v = 4;
+    }
     return obj;
   }
 
@@ -148,8 +157,8 @@
       products: productDefaults(),
       runId: 'run-' + Date.now().toString(36),
       log: [],
-      company: opts.company || 'Nimbus Labs',
-      family: opts.family || 'Nova',
+      company: opts.company || 'Fogline Labs',
+      family: opts.family || 'Karl',
       day: 0,
       cash: mode === 'sandbox' ? 10e6 : D.DIFFICULTY[difficulty].cash,
       equity: 1,
@@ -217,7 +226,7 @@
   }
 
   function techTotals(s) {
-    const t = { train: 0, infer: 0, appeal: 0, cap: 0, arpu: 0, safety: 1 };
+    const t = { train: 0, infer: 0, appeal: 0, cap: 0, arpu: 0, rp: 0, safety: 1 };
     for (const tech of D.TECHS) {
       if (!s.techs[tech.id]) continue;
       t.train += tech.train || 0;
@@ -225,6 +234,7 @@
       t.appeal += tech.appeal || 0;
       t.cap += tech.cap || 0;
       t.arpu += tech.arpu || 0;
+      t.rp += tech.rp || 0;
       if (tech.safety) t.safety *= 1 - tech.safety;
     }
     return t;
@@ -237,7 +247,8 @@
 
   function marketSize(s) {
     const yr = s.day / 365;
-    return Math.min(2.5e9, 40000 * Math.exp(1.15 * yr)) * Math.sqrt(s.sentiment) * effectMult(s, 'market');
+    const T = D.TUNING;
+    return Math.min(T.marketCap, T.marketStart * Math.exp(T.marketRate * yr)) * Math.sqrt(s.sentiment) * effectMult(s, 'market');
   }
 
   function attract(cap, appeal, hype, priceF, service, brand) {
@@ -245,6 +256,38 @@
   }
 
   const rivalAppeal = (s) => 1 + Math.min(0.8, (s.day / 365) * 0.1);
+  // how strongly the rival labs pull users, the other side of every share calculation
+  function rivalPull(s) {
+    let total = 0;
+    for (const r of s.rivals) total += attract(r.cap, rivalAppeal(s), r.hype, 1, 1, 1) * (RIVAL_BY_ID[r.id].open ? 0.45 : 1) * rivalBoost(s, r);
+    return total;
+  }
+
+  // Where subscribers and revenue would settle at other prices, all else equal.
+  function priceCurve(s, v, prices) {
+    const fm = v.flagship;
+    if (!fm) return [];
+    const others = rivalPull(s);
+    return prices.map((price) => {
+      const you = attract(fm.cap, fm.appeal, s.hype, Math.pow(20 / price, 1.1), Math.pow(v.service, 1.5), v.brand);
+      const share = you / (you + others);
+      const subs = v.market * share;
+      return { price, share, subs, revenue: subs * price * fm.arpu };
+    });
+  }
+
+  // The same for one of the extra products.
+  function productCurve(s, v, pd, prices) {
+    const fm = v.flagship;
+    if (!fm) return [];
+    const others = rivalPull(s);
+    return prices.map((price) => {
+      const mine = attract(fm.cap, fm.appeal, s.hype, Math.pow(pd.price / price, 1.1), Math.pow(v.service, 1.5), v.brand);
+      const share = mine / (mine + others);
+      const users = v.market * pd.market * share;
+      return { price, share, subs: users, revenue: users * price };
+    });
+  }
   const rivalBoost = (s, r) => (r.boost && r.boost.until > s.day ? r.boost.mult : 1);
 
   // Wages climb over time as the talent war heats up.
@@ -339,7 +382,8 @@
     v.researchQ = fx.quality;
     const researchers = s.staff.filter((p) => p.role === 'researcher');
     v.boardBonus = researchers.length ? researchers.reduce((a, p) => a + v.seatInfo.get(p.id).board, 0) / researchers.length : 0;
-    v.rpMult = 1 + 0.08 * Math.log10(1 + v.effPF);
+    // more compute and your own research tools both speed up the lab
+    v.rpMult = (1 + 0.08 * Math.log10(1 + v.effPF)) * (1 + v.tech.rp);
     v.rpStaff = team.rp * v.rpMult;
 
     const fm = flagship(s);
@@ -377,7 +421,8 @@
     v.contractRevenue = s.contracts.reduce((a, c) => a + c.monthly, 0);
     v.mrr = v.subRevenue + v.contractRevenue + v.productRevenue;
     v.powerCostDay = Math.min(v.power, v.powerCap) * 2.88 * effectMult(s, 'energy');
-    v.burnMonth = v.payroll + office.rent + v.powerCostDay * 30;
+    v.rent = office.rent * effectMult(s, 'rent');
+    v.burnMonth = v.payroll + v.rent + v.powerCostDay * 30;
     v.profitMonth = v.mrr - v.burnMonth;
     v.bestCap = bestCap(s);
     v.topRival = topRival(s);
@@ -395,7 +440,7 @@
   function alignment(s, v) {
     const parts = {
       base: 10,
-      research: (s.techs.rlhf ? 5 : 0) + (s.techs.constitutional ? 15 : 0) + (s.techs.interpretability ? 20 : 0),
+      research: (s.techs.rlhf ? 5 : 0) + (s.techs.constitutional ? 15 : 0) + (s.techs.interpretability ? 20 : 0) + (s.techs.superalignment ? 10 : 0),
       team: Math.round(30 * sat(v.S, 20)),
       choices: clamp(Math.round(s.flags.align || 0), -30, 30),
       data: v.flagship && v.flagship.human ? 5 : 0,
@@ -417,7 +462,7 @@
       const seat = (seatInfo && seatInfo.get(p.id)) || newSeat || { board: 0 };
       if (p.role === 'researcher') {
         t.R += k;
-        t.rp += Math.pow(p.skill, 1.25) * 0.3 * prod * (1 + seat.board);
+        t.rp += Math.pow(p.skill, 1.25) * 0.3 * D.TUNING.rpRate * prod * (1 + seat.board);
       } else if (p.role === 'engineer') t.E += k;
       else if (p.role === 'growth') t.G += k;
       else t.S += k;
@@ -498,6 +543,24 @@
     return revPart + capPart + team + v.hwValue;
   }
 
+  // The most useful run you could start now: a clear step up that finishes within a year.
+  function bestNextRun(s, v) {
+    if (s.training) return null;
+    const fmCap = v.flagship ? v.flagship.cap : 0;
+    const rate = Math.max(0, s.autoAlloc ? v.effPF - v.need * 1.15 : v.effPF * s.allocTrain) * v.trainMult;
+    const data = {};
+    for (const src of D.DATA_SOURCES) data[src.id] = !src.tech || !!s.techs[src.tech];
+    let best = null;
+    for (const size of D.MODEL_SIZES) {
+      if (size.id === 'agi' || (size.tech && !s.techs[size.tech])) continue;
+      const exp = expectedCap(s, size.id, data, v);
+      const days = rate > 0 ? size.pfdays / rate : Infinity;
+      if (exp < fmCap + 2 || days > 365) continue;
+      if (!best || exp > best.exp) best = { size, exp, days: Math.ceil(days), cost: trainingCost(s, size.id, data) };
+    }
+    return best;
+  }
+
   // ---------- funding ----------
 
   // How keen investors are on your next round, and why.
@@ -543,8 +606,8 @@
   }
 
   function refreshCandidates(s) {
-    const prestige = clamp(bestCap(s) / 14 + s.hype / 35 + s.officeLevel * 0.7 + (s.flags.openBonus || 0), 0, 7);
-    const n = 4 + Math.min(2, s.officeLevel);
+    const prestige = clamp(bestCap(s) / 14 + s.hype / 35 + s.officeLevel * 0.5 + (s.flags.openBonus || 0), 0, 7);
+    const n = 4 + Math.min(3, Math.floor((s.officeLevel + 1) / 2));
     const roles = ['researcher', 'researcher', 'engineer', 'engineer', 'growth', 'safety'];
     s.candidates = [];
     for (let i = 0; i < n; i++) {
@@ -587,7 +650,7 @@
       r.progress += (pace / 365) * push * (0.85 + 0.15 * s.sentiment);
       r.hype += (45 - r.hype) * 0.01;
       if (s.day < r.nextRelease) continue;
-      const target = def.cap0 + (100 - def.cap0) * Math.pow(Math.min(1, r.progress / 9.5), 0.85);
+      const target = def.cap0 + (100 - def.cap0) * Math.pow(Math.min(1, r.progress / D.TUNING.rivalYears), 0.85);
       let cap = Math.max(r.cap + 0.3, target + rand(-1.5, 1.2));
       if (def.open) cap = Math.min(cap, Math.max(...closed.map((c) => c.cap)) - 3, 95);
       cap = Math.min(s.mode === 'sandbox' ? 99.4 : 100, cap);
@@ -617,13 +680,8 @@
       s.targetSubs = 0;
       return;
     }
-    const priceF = Math.pow(20 / s.price, 1.1);
-    const you = attract(fm.cap, fm.appeal, s.hype, priceF, Math.pow(v.service, 1.5), v.brand);
-    let total = you;
-    for (const r of s.rivals) {
-      const def = RIVAL_BY_ID[r.id];
-      total += attract(r.cap, rivalAppeal(s), r.hype, 1, 1, 1) * (def.open ? 0.45 : 1) * rivalBoost(s, r);
-    }
+    const you = attract(fm.cap, fm.appeal, s.hype, Math.pow(20 / s.price, 1.1), Math.pow(v.service, 1.5), v.brand);
+    const total = you + rivalPull(s);
     s.share = you / total;
     // the other products compete against the same rivals
     for (const pd of D.PRODUCTS) {
@@ -879,7 +937,7 @@
 
     s.rp += v.rpDay;
 
-    const pay = v.payroll / 30, rent = v.office.rent / 30, power = v.powerCostDay;
+    const pay = v.payroll / 30, rent = v.rent / 30, power = v.powerCostDay;
     s.cash -= pay + rent + power;
     s.month.salaries += pay;
     s.month.rent += rent;
@@ -960,7 +1018,7 @@
       s.month.capex += next.moveCost;
       s.officeLevel++;
       log(s, 'move', { to: next.name });
-      news(s, `${s.company} moves into a ${next.name}.`, 'good', true);
+      news(s, `${s.company} moves to ${next.place}.`, 'good', true);
       return ok();
     },
 
@@ -1214,6 +1272,7 @@
         return ok(`${o.investor} agreed: now ${money(o.pre)} before the money, ${(o.dilution * 100).toFixed(1)}% of the company.`);
       }
       f.offers = f.offers.filter((x) => x !== o);
+      f.walkaways.push(s.day); // investors talk: losing one at the table costs you like walking away
       log(s, 'push', { investor: o.investor, won: false });
       if (!f.offers.length) f.cd = s.day + 30;
       news(s, `${o.investor} walked away from the table.`, 'warn');
@@ -1269,7 +1328,7 @@
   const trainCostFor = (p) => Math.max(2000, Math.round((p.salary || 6000) * 1.5));
 
   AIT.Sim = {
-    newGame, tick, derive, actions: A, fundingView, pushOdds, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
+    newGame, tick, derive, actions: A, fundingView, pushOdds, priceCurve, productCurve, bestNextRun, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
     sizeOf, stat, itemAt, occupied, canPlace, gap, seating, rivalBoost, hooks, news, addEffect, effectMult, itemCost, itemLocked,
     expectedCap, trainingCost, salaryFor, trainCostFor, eventView, resolveEvent, endGame, makeCandidate,
     dateOf, flagship, topRival, marketSize, techTotals, refreshCandidates,

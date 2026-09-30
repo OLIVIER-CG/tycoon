@@ -47,7 +47,7 @@
         monthlyRevenue: r0(v.mrr),
         monthlyCosts: r0(v.burnMonth),
         payroll: r0(v.payroll),
-        rent: v.office.rent,
+        rent: Math.round(v.rent),
         powerBillMonth: r0(v.powerCostDay * 30),
         computePF: r1(v.effPF),
         rawPF: r1(v.pf),

@@ -4,8 +4,8 @@
 const COMPUTE = ['rig', 'workstation', 'server', 'rack', 'superpod', 'wafer'];
 const COOLING = ['fan', 'ac', 'chiller', 'liquid', 'immersion'];
 const POWER = ['battery', 'substation', 'turbine', 'smr'];
-const STAFF_TARGET = [3, 8, 20, 40, 70];
-const TECH_PRIORITY = ['scaling_laws', 'flash_attention', 'rlhf', 'distributed', 'quantization', 'code_models', 'synthetic_data', 'moe', 'long_context', 'liquid_cooling', 'distillation', 'constitutional', 'multimodal', 'custom_silicon', 'frontier_scaling', 'reasoning', 'speculative', 'agents', 'immersion', 'interpretability', 'ultrascale', 'wafer_scale', 'self_improvement', 'agi_theory', 'nuclear', 'data_flywheel'];
+const STAFF_TARGET = [3, 6, 12, 22, 40, 60, 80];
+const TECH_PRIORITY = ['scaling_laws', 'flash_attention', 'rlhf', 'distributed', 'quantization', 'eval_harness', 'code_models', 'synthetic_data', 'moe', 'long_context', 'mixed_precision', 'liquid_cooling', 'distillation', 'constitutional', 'multimodal', 'sparse_scaling', 'custom_silicon', 'reasoning', 'voice', 'speculative', 'interpretability', 'frontier_scaling', 'tool_use', 'agents', 'long_training', 'immersion', 'planet_scale', 'world_models', 'nuclear', 'wafer_scale', 'data_flywheel', 'robotics', 'ultrascale', 'superalignment', 'self_improvement', 'agi_theory'];
 
 function createBot(AIT) {
   const { DATA: D, Sim } = AIT;
@@ -74,7 +74,13 @@ function createBot(AIT) {
   return function step(s, log = () => {}) {
     while (s.events.length) {
       const { id, params } = s.events[0];
-      const choice = { data_deal: params.cost < s.cash * 0.2 ? 0 : 1, price_war: s.cash > params.cost * 4 ? 1 : 2 }[id] || 0;
+      // skip optional spending without money to spare; settling and the long lease beat gambling
+      const choice = {
+        data_deal: params.cost < s.cash * 0.2 ? 0 : 1,
+        price_war: s.cash > params.cost * 4 ? 1 : 2,
+        conference: s.cash > params.cost * 8 ? 0 : 1,
+        transit_strike: params.cost < s.cash * 0.05 ? 0 : 1,
+      }[id] || 0;
       Sim.resolveEvent(s, choice);
     }
     let v = Sim.derive(s);
@@ -139,12 +145,17 @@ function createBot(AIT) {
     }
 
     v = Sim.derive(s);
-    const reserve = Math.max(0, v.burnMonth - v.mrr) * 4 + v.burnMonth + 5000;
+    // cash set aside for the data of the next bigger model, so hardware and moves don't eat it
+    const nextSize = !s.training && v.flagship && D.MODEL_SIZES.find((m) => m.base > v.flagship.cap + 2 && !m.fixedCost && (!m.tech || s.techs[m.tech]));
+    const allData = Object.fromEntries(D.DATA_SOURCES.map((src) => [src.id, !src.tech || !!s.techs[src.tech]]));
+    const dataFund = nextSize ? Sim.trainingCost(s, nextSize.id, allData) : 0;
+    const reserve = Math.max(0, v.burnMonth - v.mrr) * 6 + v.burnMonth + 5000 + dataFund;
 
     const next = D.OFFICES[s.officeLevel + 1];
-    // move only when 18 months at the new rent are covered (or the lab stays profitable)
-    const netAfter = v.burnMonth - v.office.rent + (next ? next.rent : 0) - v.mrr;
-    if (next && s.cash > next.moveCost + Math.max(0, netAfter) * 18 + reserve && v.power > v.office.power * 0.6) {
+    // move only when 18 months at the new rent are covered, and keep 4 months of the new costs either way
+    const burnAfter = v.burnMonth - v.rent + (next ? next.rent : 0);
+    const netAfter = burnAfter - v.mrr;
+    if (next && s.cash > next.moveCost + Math.max(burnAfter * 4, netAfter * 18) + reserve && v.power > v.office.power * 0.6) {
       if (A.moveOffice(s).ok) log(`move to ${next.name}`);
     }
 

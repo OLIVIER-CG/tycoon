@@ -26,7 +26,7 @@ for (let r = 0; r < runs; r++) {
   const events = [];
   const log = (t) => events.push(`y${yr(s.day)} ${t}`);
   const marks = {};
-  while (!s.over && s.day < 365 * 12) {
+  while (!s.over && s.day < 365 * 25) {
     bot(s, log);
     Sim.tick(s);
     for (const g of D.GOALS) if (s.goals[g.id] && !marks[g.id]) marks[g.id] = s.day;
