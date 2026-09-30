@@ -104,7 +104,7 @@
       case 'open': return `open-sourced ${e.name}`;
       case 'price': return `price $${e.from} → $${e.to}`;
       case 'alloc': return e.auto ? 'compute split: auto' : `compute split: manual ${Math.round(e.share * 100)}% training`;
-      case 'campaign': return `ran campaign ${e.id}`;
+      case 'campaign': return `ran campaign ${e.id}${e.auto ? ' (auto-renew)' : ''}`;
       case 'raise': return `raised ${e.round}${e.investor ? ` from ${e.investor}` : ''}: $${e.raise} at $${e.pre} pre (${e.dil}% dilution)`;
       case 'decline': return `declined ${e.round} term sheet`;
       case 'pitch': return `pitched ${e.round}: ${e.offers} offer${e.offers === 1 ? '' : 's'}`;

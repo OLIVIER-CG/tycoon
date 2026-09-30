@@ -40,18 +40,18 @@
     },
     {
       id: 'rigs',
-      lines: ['Open Build, pick Gaming Rig in the dock under the office, then tap three empty floor tiles. On a computer you can drag across tiles to place several at once.'],
+      lines: ['Pick Compute in the build toolbar on the left, choose Gaming Rig, then tap three empty floor tiles. On a computer you can drag across tiles to place several at once.'],
       task: 'Place 3 more Gaming Rigs',
       progress: (s) => `${Math.min(3, Math.max(0, count(s, 'rig') - 1))}/3`,
       done: (s) => count(s, 'rig') >= 4,
       after: () => AIT.Render.setTool(null),
       go: 'build:compute',
-      highlight: ['#rail [data-screen="build"]', '#dock [data-cat="compute"]', '#dock [data-item="rig"]'],
+      highlight: ['#tools [data-cat="compute"]', '#dock [data-item="rig"]'],
     },
     {
       id: 'heat',
       lines: [
-        'Good. Every GPU turns power into heat. Keep an eye on the Heat vs cooling bar in Build.',
+        'Good. Every GPU turns power into heat. Keep an eye on the Heat bar at the top of the build shelf, and on the compute number in the bar at the bottom.',
         'If heat goes above cooling, all your GPUs glow red and slow down. Box fans and AC units are cheap, and it does not matter where you put them. The Sunset fog helps, but only a little.',
       ],
       go: 'build:cooling',
@@ -59,7 +59,7 @@
     },
     {
       id: 'train',
-      lines: ['Now the fun part. Open Models and start a Tiny training run. Licensed data costs a little, but it keeps the lawyers away.'],
+      lines: ['Now the fun part. Open Models with the round button at the top and start a Tiny training run. Licensed data costs a little, but it keeps the lawyers away.'],
       task: 'Start training a Tiny model',
       done: (s) => !!s.training || s.models.length > 0,
       go: 'models',
@@ -87,7 +87,7 @@
         "You're live. Subscribers pay $20 a month. How many you get depends on your OmniBench score against rivals, your hype and your price.",
         'Every subscriber also needs compute. The Auto split in Models serves them first and trains with whatever is left.',
       ],
-      highlight: ['#res-subs'],
+      highlight: ['#st-subs'],
     },
     {
       id: 'raise',
@@ -102,20 +102,20 @@
     },
     {
       id: 'hire',
-      lines: ['Money is for people and GPUs. Build a standing desk from Build › Office, then hire a researcher from Team. Researchers earn research points.'],
+      lines: ['Money is for people and GPUs. Build a standing desk from the Office shelf in the build toolbar, then hire a researcher from Team. Researchers earn research points.'],
       task: 'Hire your first employee',
       done: (s) => s.staff.length >= 2,
       go: (s) => (seats(s) > s.staff.length ? 'team' : 'build:office'),
       highlight: (s) =>
         seats(s) > s.staff.length
           ? ['#rail [data-screen="team"]', '[data-act="hire"]']
-          : ['#rail [data-screen="build"]', '#dock [data-cat="office"]', '#dock [data-item="desk"]'],
+          : ['#tools [data-cat="office"]', '#dock [data-item="desk"]'],
     },
     {
       id: 'research',
       lines: [
         'Research points unlock bigger models and better hardware. Scaling Laws comes first and unlocks Small models, but a Small model needs about 6,000 PF-days. A garage cannot do that. Move into a flat in the Mission and fill it with workstations first.',
-        "That's the basics. HQ always shows your next goal and anything that needs you, and I'll drop in when something important comes up. This is a long road from the Sunset to Treasure Island. Go build something.",
+        "That's the basics. The card at the top right shows your next milestone, and the orange tab at the bottom opens your company with everything that needs you. I'll drop in when something important comes up. This is a long road from the Sunset to Treasure Island. Go build something.",
       ],
       go: 'research',
       highlight: ['#rail [data-screen="research"]'],
@@ -134,9 +134,9 @@
     {
       id: 'overheat', urgent: true,
       when: (s, v) => v.thermal < 0.97,
-      lines: (s, v) => [`It's getting hot in here. Your GPUs make ${kw(v.heat)} of heat and you can only remove ${kw(v.cooling)}, so everything runs at ${Math.round(v.thermal * 100)}% speed. Add fans or AC units from Build › Cooling.`],
+      lines: (s, v) => [`It's getting hot in here. Your GPUs make ${kw(v.heat)} of heat and you can only remove ${kw(v.cooling)}, so everything runs at ${Math.round(v.thermal * 100)}% speed. Add fans or AC units from the Cooling shelf in the build toolbar.`],
       go: 'build:cooling',
-      highlight: ['[data-coach="heat"]', '#dock [data-cat="cooling"]'],
+      highlight: ['[data-coach="heat"]', '#tools [data-cat="cooling"]'],
     },
     {
       id: 'cut_costs', urgent: true,
@@ -189,13 +189,13 @@
     {
       id: 'desks',
       when: (s, v) => s.staff.length >= 2 && v.seats <= s.staff.length && s.cash > 50000,
-      lines: ["Every desk is taken, so you can't hire anyone else. Standing desks are cheap. Find them in Build › Office."],
+      lines: ["Every desk is taken, so you can't hire anyone else. Standing desks are cheap. Find them on the Office shelf in the build toolbar."],
       go: 'build:office',
     },
     {
       id: 'loft',
       when: (s) => s.officeLevel === 0 && s.models.length > 0 && s.cash > 30000,
-      lines: ["The garage is nearly out of power. The Victorian flat in the Mission has three times the power and room for 4-GPU workstations. You'll find it in Build, under your current office."],
+      lines: ["The garage is nearly out of power. The Victorian flat in the Mission has three times the power and room for 4-GPU workstations. Open Real estate from the build toolbar on the left."],
       go: 'build',
     },
     {
@@ -204,7 +204,7 @@
         const team = s.staff.filter((p) => !p.founder);
         return team.length >= 2 && team.reduce((a, p) => a + p.morale, 0) / team.length < 45;
       },
-      lines: ['Your team is unhappy. Low morale slows work, and people quit below 25%. A pour-over bar, bean bags, a pinball machine or an office dog near their desks helps, and so does hype.'],
+      lines: ['Your team is unhappy. Low morale slows work, and people quit below 25%. A pour-over bar, bean bags, a pinball machine or an office dog near their desks helps, and so does hype. They are on the Comfort shelf.'],
       go: 'build:comfort',
     },
     {

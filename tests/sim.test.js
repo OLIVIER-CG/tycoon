@@ -323,6 +323,51 @@ test('the run report includes the new fields', () => {
   assert.ok('alignment' in r.final && 'products' in r.final && 'overheatingGpus' in r.final);
 });
 
+test('campaigns hold a marketing slot while they run', () => {
+  const s = blank(0);
+  assert.equal(Sim.campaignSlots(s), 2);
+  assert.ok(A.campaign(s, 'thread').ok);
+  assert.equal(A.campaign(s, 'thread').msg, 'Already running');
+  assert.ok(A.campaign(s, 'influencer').ok);
+  s.officeLevel = 2;
+  assert.equal(Sim.activeCampaigns(s).length, 2);
+  assert.ok(A.campaign(s, 'launch').ok);
+  s.officeLevel = 3;
+  assert.equal(A.campaign(s, 'billboard').msg, 'Every marketing slot is busy');
+  s.officeLevel = 4;
+  assert.ok(A.campaign(s, 'billboard').ok, 'a bigger office has a bigger marketing team');
+});
+
+test('auto-renew restarts a finished campaign when there is cash for it', () => {
+  const s = blank(0);
+  s.cash = 1e6;
+  A.setAutoRenew(s, 'influencer', true);
+  for (let i = 0; i < 3; i++) Sim.tick(s);
+  assert.ok(Sim.activeCampaigns(s).some((c) => c.id === 'influencer'), 'starts on the next day');
+  const runs = () => s.log.filter((e) => e.a === 'campaign' && e.id === 'influencer').length;
+  for (let i = 0; i < 45; i++) Sim.tick(s);
+  assert.ok(runs() >= 2, 'renewed after it ended');
+  s.cash = 30000; // under twice the cost: it waits
+  const before = runs();
+  for (let i = 0; i < 45; i++) {
+    s.cash = 30000;
+    Sim.tick(s);
+  }
+  assert.equal(runs(), before);
+});
+
+test('stopping a campaign frees its slot but it cannot restart early', () => {
+  const s = blank(0);
+  assert.ok(A.campaign(s, 'thread').ok);
+  A.setAutoRenew(s, 'thread', true);
+  assert.ok(A.stopCampaign(s, 'thread').ok);
+  assert.equal(Sim.activeCampaigns(s).length, 0);
+  assert.equal(s.autoRenew.thread, false);
+  assert.match(A.campaign(s, 'thread').msg, /Ready again in \d+ days/);
+  s.day = s.campaignCd.thread;
+  assert.ok(A.campaign(s, 'thread').ok);
+});
+
 test('balance: a good bot reaches AGI before the rivals, in the middle of the 2030s', () => {
   const years = [];
   for (let seed = 1004; seed < 1008; seed++) {

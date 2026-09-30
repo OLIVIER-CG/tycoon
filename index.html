@@ -7,56 +7,17 @@
   <meta name="description" content="Build an AI lab from an Outer Sunset garage to Treasure Island and race the Bay's rival labs to AGI.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Saira+Semi+Condensed:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <style id="coach-style"></style>
   <div id="app">
-    <header id="topbar">
-      <div class="brand">
-        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="3" width="4" height="26" rx="1" fill="currentColor"/><rect x="21" y="3" width="4" height="26" rx="1" fill="currentColor"/><path d="M2 20 Q9 8 9 8 Q16 17 23 8 Q23 8 30 20" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2" y="19" width="28" height="3" fill="currentColor"/><rect x="7" y="9" width="4" height="1.6" fill="var(--paper)"/><rect x="21" y="9" width="4" height="1.6" fill="var(--paper)"/></svg>
-        <div class="brand-text"><div id="co-name">AI Boom Tycoon</div><div id="co-place"></div></div>
-      </div>
-      <div class="clock">
-        <div id="date" class="mono"></div>
-        <div id="speed" class="seg" role="group" aria-label="Game speed">
-          <button data-speed="0" aria-label="Pause" title="Pause (Space)"><span class="pause" aria-hidden="true"></span></button>
-          <button data-speed="1" title="1 day per second (1)">1×</button>
-          <button data-speed="2" title="3 days per second (2)">3×</button>
-          <button data-speed="3" title="8 days per second (3)">8×</button>
-        </div>
-      </div>
-      <div id="resources" class="resources">
-        <button class="res" id="res-cash" data-go="finance"></button>
-        <button class="res" id="res-compute" data-go="build"></button>
-        <button class="res" id="res-subs" data-go="market"></button>
-        <button class="res" id="res-bench" data-go="race"></button>
-        <button class="res" id="res-hype" data-go="market"></button>
-        <button class="res" id="res-val" data-go="finance"></button>
-      </div>
-      <div class="top-actions">
-        <button id="notif-btn" class="icon-btn" aria-label="Notifications" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span id="notif-count" class="badge" hidden></span></button>
-        <button id="feedback-btn" class="icon-btn labeled" aria-label="Send a snapshot and feedback to Claude" title="Send a snapshot and feedback to Claude"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H10l-6 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>Feedback</span></button>
-        <button id="mute-btn" class="icon-btn" aria-label="Mute sound"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="x" d="M16 9l6 6M22 9l-6 6"/></svg></button>
-        <button id="menu-btn" class="icon-btn" aria-label="Menu"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-      </div>
-    </header>
-
-    <nav id="rail" aria-label="Screens"></nav>
-
-    <aside id="panel" aria-labelledby="panel-title">
-      <header class="panel-head">
-        <div class="grow"><div id="panel-eyebrow" class="eyebrow"></div><h2 id="panel-title"></h2></div>
-        <button id="panel-close" class="icon-btn" aria-label="Close panel"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-      </header>
-      <div id="panel-body"></div>
-    </aside>
-
     <main id="stage">
       <canvas id="view" aria-label="Your office, seen from above"></canvas>
-      <div id="advisor"></div>
+      <div id="feed" title="Open the news"></div>
       <div id="banner" hidden></div>
+      <div id="advisor"></div>
       <div id="toolbar" hidden></div>
       <div id="inspect" hidden></div>
       <div id="mentor" class="mentor" hidden role="region" aria-label="Mentor" aria-live="polite"></div>
@@ -67,11 +28,43 @@
       </div>
       <div id="toasts" aria-live="polite"></div>
       <div id="dock" hidden></div>
-      <footer id="ticker" title="Open the news"></footer>
     </main>
 
+    <header id="hud-top">
+      <div class="hud-bar">
+        <button id="menu-btn" class="hb-btn" aria-label="Menu"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div id="date" class="hb-date"></div>
+        <div id="speed" class="hb-speed" role="group" aria-label="Game speed">
+          <button data-speed="0" aria-label="Pause" title="Pause (Space)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg></button>
+          <button data-speed="1" aria-label="Normal speed" title="1 day per second (1)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg></button>
+          <button data-speed="2" aria-label="Fast" title="3 days per second (2)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l9 6-9 6zM12 6l9 6-9 6z" fill="currentColor"/></svg></button>
+          <button data-speed="3" aria-label="Fastest" title="8 days per second (3)"><svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 6l8 6-8 6zM10 6l8 6-8 6zM19 6l8 6-8 6z" fill="currentColor"/></svg></button>
+        </div>
+      </div>
+      <nav id="rail" class="win-buttons" aria-label="Windows"></nav>
+    </header>
+
+    <div id="hud-right">
+      <button id="notif-btn" class="sq-btn" aria-label="Notifications" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z" fill="currentColor"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span id="notif-count" class="badge" hidden></span></button>
+      <button id="feedback-btn" class="sq-btn labeled" aria-label="Send a snapshot and feedback to Claude" title="Send a snapshot and feedback to Claude"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H10l-6 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>Feedback</span></button>
+      <button id="mute-btn" class="sq-btn" aria-label="Mute sound"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="x" d="M16 9l6 6M22 9l-6 6"/></svg></button>
+    </div>
+
+    <nav id="tools" aria-label="Build"></nav>
+
+    <footer id="hud-bottom">
+      <div id="stats-left" class="stat-row"></div>
+      <button id="company-btn" data-screen="hq" aria-label="Open your company">
+        <span class="co-badge"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="4" width="4" height="25" rx="1" fill="currentColor"/><rect x="21" y="4" width="4" height="25" rx="1" fill="currentColor"/><path d="M2 20 Q9 9 9 9 Q16 17 23 9 Q23 9 30 20" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="2" y="19" width="28" height="3" fill="currentColor"/></svg></span>
+        <span id="co-name" class="co-name">AI Boom Tycoon</span>
+      </button>
+      <div id="stats-right" class="stat-row"></div>
+    </footer>
+
+    <div id="win-root" hidden></div>
     <div id="notif-panel" hidden></div>
   </div>
+  <div id="title" hidden></div>
   <div id="modal-root" hidden></div>
 
   <script src="js/data.js"></script>
@@ -82,6 +75,7 @@
   <script src="js/report.js"></script>
   <script src="js/render.js"></script>
   <script src="js/sound.js"></script>
+  <script src="js/saves.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/mentor.js"></script>
   <script src="js/main.js"></script>

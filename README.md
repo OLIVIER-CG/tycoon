@@ -16,8 +16,9 @@ Open `index.html` in a browser. Or serve the folder:
 npm start          # serves the folder with npx serve
 ```
 
-Progress saves automatically to your browser every in-game month. Saves from
-older versions are upgraded when they load.
+Progress saves automatically to your browser every in-game month, with
+milestone saves to go back to (see Saves below). Saves from older versions
+are upgraded when they load.
 
 **Share it.** `.github/workflows/pages.yml` publishes the game to GitHub Pages
 on every push to `main`. Turn it on once under Settings › Pages › Source:
@@ -55,29 +56,46 @@ and rent hikes all show up.
 
 ## Screens
 
-A rail on the left (a bottom bar on phones) opens one screen at a time in a
-side panel, so the office stays in view:
+The game looks and plays like a PC tycoon game. It opens on a **title screen**
+(Continue, New game, Load game, Options, Credits) over your office. In the
+game the office fills the screen and the chrome sits on top of it:
 
-- **HQ**: the state of the company at a glance, the next goal, a short list of
-  what needs you (each with a button that takes you there), the current run and
-  the race.
-- **Build**: your office, power and heat meters, and the next office with how
-  much you still need. Items sit in a dock under the office, grouped by category.
-- **Team**: what each role adds, morale and where it comes from, every person
-  and every candidate with their effect in plain numbers.
-- **R&D**: all technologies as tiles by tier. Finished tiers fold away, and
-  filters show what you can afford or what leads to AGI.
-- **Models**: pick a size and data, compare the expected score with your model
-  and the top rival, and see how long the run takes on your hardware.
-- **Market**: a revenue-by-price chart that shows what a price change would do
-  before you make it, what decides your share against the leader, products,
-  campaigns and enterprise deals.
-- **Money**: cash, profit, valuation, your stake and fundraising.
-- **Race**: the OmniBench leaderboard, alignment and filtered news.
+- **Top left:** the menu, the date, pause and three speeds, then a round
+  button for each window: Team, Research, Models, Market, Money and the Race.
+  A dot means something there needs you, a yellow dot means it is new.
+- **Left:** the build toolbar. Each category (compute, cooling, power,
+  office, comfort) opens a shelf of item cards along the bottom with power,
+  heat and desk meters; there is also a sell tool and Real estate.
+- **Bottom:** people and morale, hype, subscribers, compute, research points
+  and your OmniBench score on the left; revenue, profit, valuation and cash
+  on the right; the orange tab in the middle opens your company.
+- **Over the office:** a news feed, the next milestone with the most useful
+  next step, warnings as a banner, and a bell with everything that needs you.
 
-The top bar shows the numbers that matter; tap one to open its screen.
-Warnings appear as a banner over the office, and the bell collects
-everything that needs attention.
+**Windows** open in the middle with a slate title bar, orange tabs, a `?`
+that explains the window and four key numbers along the bottom:
+
+| Window | Tabs |
+| --- | --- |
+| Company | Overview (next steps, training, race, trends), Real estate (your office, the next one and all seven), Goals |
+| Team | Staff, Hiring |
+| Research | Available, All technologies, Path to AGI |
+| Models | Train, Library, Compute split |
+| Market | Pricing (revenue-by-price chart and what decides your share), Marketing, Products, Deals |
+| Money | Overview (cash and revenue charts, last month's books), Funding |
+| The race | Leaderboard, Alignment, News |
+
+**Marketing** works in slots: campaigns hold a slot while they run (two in
+the garage, up to four in the Financial District and later), show how long
+they have left, and can renew themselves while you keep twice their cost in
+the bank. Stopping one frees its slot, but it can't restart before it would
+have ended.
+
+**Saves.** Every run has an autosave, rewritten each month, plus milestone
+saves at every new chapter and every new year (the last four years are
+kept). Load game lists them per company with the in-game date, when each was
+made, time played and the game version, like a keyframe list. When browser
+storage fills up, the oldest milestones go first.
 
 ## How it plays
 
@@ -94,7 +112,7 @@ everything that needs attention.
 | **Stay aligned** | Safety staff, safety research and your choices in a crisis add up to an alignment score. It decides how the world greets your AGI: trusted, uneasy or reckless. |
 
 **Pacing.** A good run takes about 14 in-game years, roughly twice as long as
-v0.1. The game starts with three screens, two stats and two items. Screens,
+v0.1. The game starts with the Models window, two stats and two items. Windows,
 stats, build categories, research tiers, model sizes and funding rounds appear
 as you earn them, with a dot on anything new. The shop only teases the next
 thing you can unlock instead of listing everything. There are no random events
@@ -124,7 +142,7 @@ where their numbers come from. Cancelling a run refunds half the data cost.
 
 **Guidance.** R&D tags every technology on the path to the AGI Blueprint and
 counts how many are done. Models has a planner that says how much compute a
-run needs to finish in 150 days and how many of your best GPUs that means. HQ
+run needs to finish in 150 days and how many of your best GPUs that means. The Company window
 suggests the best next run (size, expected score, days and data cost) and opens
 the planner on it. The idle-GPU warning only appears when a clearly better model
 is within reach, and a full-screen prompt appears the moment the AGI Blueprint
@@ -149,8 +167,9 @@ You win by finishing the AGI Project before any rival reaches 100 on
 OmniBench. You lose if a rival gets there first, or if you run out of cash for
 90 days.
 
-**Controls:** Space pauses, keys 1–3 set the speed, Esc cancels placement.
-Scroll or pinch to zoom, drag to pan, right-click to stop placing.
+**Controls:** Space pauses, keys 1–3 set the speed, Esc closes a window or
+cancels placement. Scroll or pinch to zoom, drag to pan, right-click to stop
+placing.
 
 ## Code layout
 
@@ -164,7 +183,8 @@ js/events.js      random events and decisions
 js/sim.js         game state, daily simulation and player actions (no DOM, runs in Node)
 js/render.js      isometric renderer: San Francisco offices and window views, fog, walking staff, speech bubbles, confetti and input
 js/sound.js       synthesized sound effects
-js/ui.js          top bar, screen rail and panel, build dock, modals, launch reveals, chapter cards and toasts
+js/saves.js       save slots: autosave, milestone saves, loading and pruning
+js/ui.js          title screen, HUD, windows and tabs, build toolbar and shelf, dialogs, launch reveals and toasts
 js/mentor.js      mentor dialogue: tutorial steps and one-off tips
 js/report.js      compact run report for "Send this run to Claude"
 js/main.js        boot, save/load and the main loop

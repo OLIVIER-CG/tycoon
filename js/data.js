@@ -182,6 +182,8 @@
     { id: 'keynote', name: 'Keynote at Moscone', minOffice: 4, cost: 3e6, hype: 18, cd: 45, desc: 'Black turtleneck, one slide, standing ovation.' },
     { id: 'bigad', name: 'Big Game TV Ad', minOffice: 5, cost: 20e6, hype: 28, cd: 120, desc: 'Sixty seconds in front of a hundred million people.' },
   ];
+  // how many campaigns can run at once, by office: a bigger lab has a bigger marketing team
+  const CAMPAIGN_SLOTS = [2, 2, 3, 3, 4, 4, 4];
 
   // Funding stages, raised in order. Raising is optional: investors buy a slice
   // of the company. want() is how close you are to what investors hope to see
@@ -280,7 +282,7 @@
 
   AIT.DATA = {
     START_DATE, TUNING, OFFICES, ITEMS, ITEM_CATS, ROLES, TECHS, MODEL_SIZES, DATA_SOURCES,
-    RIVALS, CAMPAIGNS, ROUNDS, INVESTORS, GOALS, FIRST_NAMES, LAST_NAMES, PRODUCTS, DIFFICULTY, ACHIEVEMENTS,
+    RIVALS, CAMPAIGNS, CAMPAIGN_SLOTS, ROUNDS, INVESTORS, GOALS, FIRST_NAMES, LAST_NAMES, PRODUCTS, DIFFICULTY, ACHIEVEMENTS,
     TECH_BY_ID: Object.fromEntries(TECHS.map((t) => [t.id, t])),
     SIZE_BY_ID: Object.fromEntries(MODEL_SIZES.map((m) => [m.id, m])),
   };

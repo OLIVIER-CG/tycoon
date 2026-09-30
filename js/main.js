@@ -1,8 +1,7 @@
 /* Boot, save/load and the main loop. */
 (function (root) {
   const AIT = root.AIT;
-  const { Sim, Render, UI, DATA: D } = AIT;
-  const KEY = 'ai-boom-tycoon-v1';
+  const { Sim, Render, UI, Saves, DATA: D } = AIT;
   const SPEEDS = [0, 1, 3, 8]; // in-game days per real second
 
   const game = (AIT.game = {
@@ -24,21 +23,38 @@
       this.save();
       UI.renderPanel(true);
     },
-    save() {
-      try {
-        this.s.rng = Sim.rngState(); // keeps a daily-seed game on the same dice after a reload
-        localStorage.setItem(KEY, JSON.stringify(this.s));
-      } catch (e) {
-        /* storage can be unavailable; the game still runs */
-      }
+    json() {
+      this.s.rng = Sim.rngState(); // keeps a daily-seed game on the same dice after a reload
+      return JSON.stringify(this.s);
     },
-    load() {
+    // storage can be unavailable; the game still runs, it just won't remember
+    save() {
+      return Saves.autosave(this.s, this.json());
+    },
+    saveManual() {
+      return Saves.manual(this.s, this.json());
+    },
+    keyframe(label, tag) {
+      return Saves.keyframe(this.s, this.json(), label, tag);
+    },
+    // load a save slot; false if it is missing or unreadable
+    loadSlot(id) {
+      let s = null;
       try {
-        const raw = localStorage.getItem(KEY);
-        return raw ? JSON.parse(raw) : null;
+        s = hydrate(JSON.parse(Saves.read(id)));
       } catch (e) {
-        return null;
+        s = null;
       }
+      if (!s) return false;
+      this.s = s;
+      Render.selected = null;
+      Render.setTool(null);
+      Render.fit(D.OFFICES[s.officeLevel].size);
+      UI.resetOver();
+      AIT.Mentor.reset();
+      this.setSpeed(1);
+      UI.renderPanel(true);
+      return true;
     },
   });
 
@@ -51,7 +67,12 @@
   }
 
   Sim.hooks.toast = (text, kind) => UI.toast(text, kind);
-  Sim.hooks.month = () => game.save();
+  Sim.hooks.month = () => {
+    game.save();
+    // a keyframe every new year, so players can go back
+    const d = Sim.dateOf(game.s.day);
+    if (d.getUTCMonth() === 0 && game.s.day > 1) game.keyframe(`New year ${d.getUTCFullYear()}`, 'year');
+  };
   Sim.hooks.over = () => game.save();
 
   let last = performance.now();
@@ -93,13 +114,22 @@
     } catch (e) {
       restored = null;
     }
-    const s = restored || hydrate(game.load());
+    Saves.migrateLegacy();
+    // behind the title screen: the latest save's office, or a fresh garage
+    let s = restored;
+    if (!s) {
+      const last = Saves.latest();
+      try {
+        s = last ? hydrate(JSON.parse(Saves.read(last.id))) : null;
+      } catch (e) {
+        s = null;
+      }
+    }
     game.s = s || Sim.newGame();
     if (restored && typeof data.speed === 'number') game.speed = data.speed;
     Render.fit(D.OFFICES[game.s.officeLevel].size);
     UI.renderPanel(true);
-    if (!s) UI.showNewGame(false);
-    else if (!restored) UI.toast(`Welcome back to ${game.s.company}.`, 'good');
+    if (!restored) UI.showTitle(); // a live reload of the artifact drops you straight back in
 
     new ResizeObserver(() => Render.resize()).observe(document.getElementById('stage'));
     document.addEventListener('visibilitychange', () => {

@@ -190,6 +190,8 @@
       contracts: [],
       cloud: null,
       campaignCd: {},
+      autoRenew: {},
+      campaignStopped: {},
       rounds: [],
       funding: fundingDefaults(),
       history: [],
@@ -944,6 +946,7 @@
     s.month.power += power;
 
     s.hype = clamp(s.hype + (5 - s.hype) * 0.012 * (1 - 0.4 * sat(v.G, 15)), 0, 100);
+    renewCampaigns(s);
 
     staffDaily(s, v);
     if (s.day - s.candidatesDay >= 7) refreshCandidates(s);
@@ -971,6 +974,21 @@
     } else {
       if (s.stats.negDays > 0 && s.cash >= 0) s.flags.recovered = true;
       s.stats.negDays = 0;
+    }
+  }
+
+  // campaigns run for their cooldown and hold a marketing slot meanwhile
+  const campaignSlots = (s) => D.CAMPAIGN_SLOTS[Math.min(s.officeLevel, D.CAMPAIGN_SLOTS.length - 1)];
+  // a stopped campaign gives its slot back but can't be rerun before it would have ended
+  const activeCampaigns = (s) => D.CAMPAIGNS.filter((c) => (s.campaignCd[c.id] || 0) > s.day && !(s.campaignStopped && s.campaignStopped[c.id] === s.campaignCd[c.id]));
+  // auto-renew restarts a finished campaign, as long as it leaves twice its cost in the bank
+  function renewCampaigns(s) {
+    const on = s.autoRenew || {};
+    for (const c of D.CAMPAIGNS) {
+      if (!on[c.id] || (s.campaignCd[c.id] || 0) > s.day) continue;
+      if (s.cash < c.cost * 2 || activeCampaigns(s).length >= campaignSlots(s)) continue;
+      const r = A.campaign(s, c.id);
+      if (r.ok) s.log[s.log.length - 1].auto = true;
     }
   }
 
@@ -1190,7 +1208,9 @@
     campaign(s, id) {
       const c = D.CAMPAIGNS.find((x) => x.id === id);
       if ((c.minOffice || 0) > s.officeLevel) return no(`Needs ${D.OFFICES[c.minOffice].name}`);
-      if ((s.campaignCd[id] || 0) > s.day) return no('On cooldown');
+      const left = (s.campaignCd[id] || 0) - s.day;
+      if (left > 0) return no(activeCampaigns(s).some((x) => x.id === id) ? 'Already running' : `Ready again in ${left} days`);
+      if (activeCampaigns(s).length >= campaignSlots(s)) return no('Every marketing slot is busy');
       if (s.cash < c.cost) return no('Not enough cash');
       s.cash -= c.cost;
       s.month.marketing += c.cost;
@@ -1201,6 +1221,22 @@
       s.campaignCd[id] = s.day + c.cd;
       log(s, 'campaign', { id });
       return ok(`${c.name}: +${gain.toFixed(1)} hype`);
+    },
+
+    setAutoRenew(s, id, on) {
+      if (!D.CAMPAIGNS.some((c) => c.id === id)) return no('Unknown campaign');
+      s.autoRenew = s.autoRenew || {};
+      s.autoRenew[id] = !!on;
+      return ok();
+    },
+
+    // free the slot now and stop renewing; the hype already gained stays
+    stopCampaign(s, id) {
+      if (!activeCampaigns(s).some((c) => c.id === id)) return no('Not running');
+      s.campaignStopped = s.campaignStopped || {};
+      s.campaignStopped[id] = s.campaignCd[id];
+      if (s.autoRenew) s.autoRenew[id] = false;
+      return ok();
     },
 
     // Pitching brings back up to three competing term sheets, or none if
@@ -1328,7 +1364,7 @@
   const trainCostFor = (p) => Math.max(2000, Math.round((p.salary || 6000) * 1.5));
 
   AIT.Sim = {
-    newGame, tick, derive, actions: A, fundingView, pushOdds, priceCurve, productCurve, bestNextRun, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
+    newGame, tick, derive, actions: A, campaignSlots, activeCampaigns, fundingView, pushOdds, priceCurve, productCurve, bestNextRun, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
     sizeOf, stat, itemAt, occupied, canPlace, gap, seating, rivalBoost, hooks, news, addEffect, effectMult, itemCost, itemLocked,
     expectedCap, trainingCost, salaryFor, trainCostFor, eventView, resolveEvent, endGame, makeCandidate,
     dateOf, flagship, topRival, marketSize, techTotals, refreshCandidates,
