@@ -456,7 +456,7 @@
           <p class="note">${esc(next.blurb)}</p>
           <dl class="kv"><div><dt>Power</dt><dd>${fmt.kw(next.power)}</dd></div><div><dt>Building cooling</dt><dd>${fmt.kw(next.cooling)}</dd></div><div><dt>Rent</dt><dd>${money(next.rent)}/mo</dd></div><div><dt>Move</dt><dd>${money(next.moveCost)}</dd></div></dl>
           <div class="callout ${risky ? 'warn' : ''}">${note}</div>
-          <button class="btn primary wide" data-act="move"${disabled(s.cash < next.moveCost)}>Move to ${esc(next.place)} · ${money(next.moveCost)}</button>
+          <button class="btn ${ui.confirm === 'move' ? 'danger' : 'primary'} wide" data-act="confirm" data-key="move"${disabled(s.cash < next.moveCost)}>${ui.confirm === 'move' ? `Confirm: move for ${money(next.moveCost)}` : `Move to ${esc(next.place)} · ${money(next.moveCost)}`}</button>
         </section>`;
     }
     const estate = D.OFFICES.map((x, i) => {
@@ -818,6 +818,7 @@
           <div class="card-head"><h3>${esc(size.name)} · expected score</h3><span class="tag accent">${size.params}</span></div>
           <div class="compare">${compare.map((r) => `<div class="race-line"><span class="nm">${r.name}</span><span class="track"><i style="width:${r.cap}%;background:${r.color}"></i></span><span class="mono small">${r.txt}</span></div>`).join('')}</div>
           <dl class="kv"><div><dt>Time at current compute</dt><dd class="${tooSlow ? 'bad-text' : d > 150 ? 'warn-text' : ''}">${d === Infinity ? 'no spare compute' : days(d)}</dd></div><div><dt>Data cost</dt><dd class="${s.cash < cost ? 'bad-text' : ''}">${money(cost)}</dd></div></dl>
+          ${fm && size.id !== 'agi' && exp <= fm.cap + 0.5 ? `<div class="callout warn"><b>This won't beat your live model.</b>${esc(size.name)} scores about ${exp.toFixed(1)} and ${esc(fm.name)} already has ${fm.cap.toFixed(1)}. Retraining the same size barely helps: a bigger model needs more compute and research.</div>` : ''}
           ${planner(s, v, size)}
           ${tooSlow ? `<div class="callout bad">Too slow to start: ${d === Infinity ? 'you have no spare compute' : `it would take ${days(d)}`}. Add GPUs in Build, or pick a smaller model.</div>` : ''}
           ${s.cash < cost && !tooSlow ? `<div class="callout bad">Not enough cash for this data (${money(cost)}). ${dataAdvice(s, size, cost)}</div>` : ''}
@@ -1229,6 +1230,7 @@
     renderRail(s);
     const root = $('win-root');
     root.hidden = !ui.winOpen;
+    document.body.classList.toggle('win-open', !!ui.winOpen);
     if (!ui.winOpen) {
       if (ui.winBuilt) {
         root.innerHTML = '';
@@ -2074,7 +2076,13 @@
         }
         ui.confirm = null;
         const [kind, arg] = key.split(':');
-        if (kind === 'fire') result(A.fire(s, arg));
+        if (kind === 'move') {
+          // close the window so you land in the new office, not on the next Move button
+          if (result(A.moveOffice(s), false)) {
+            AIT.Render.fit(D.OFFICES[s.officeLevel].size);
+            ui.winOpen = false;
+          }
+        } else if (kind === 'fire') result(A.fire(s, arg));
         else if (kind === 'open') result(A.openSource(s, arg));
         else if (kind === 'cancel-train') result(A.cancelTraining(s));
         break;
@@ -2122,7 +2130,8 @@
 
   // go somewhere: 'team', 'finance:funding', 'build:cooling' (a build shelf), 'models:run'
   function goTo(target) {
-    const [screen, sub] = target.split(':');
+    const [screen, sub, size] = target.split(':');
+    if (screen === 'models' && size) ui.train.size = size; // 'models:train:small' opens Train on that size
     ui.notifOpen = false;
     if (screen === 'build') {
       if (!sub) return openWindow('hq', 'office');
@@ -2487,7 +2496,8 @@
       const v = Sim.derive(s);
       if (!ui.title) {
         const got = Progress.check(s, v);
-        for (const n of got.notes) toast(n, 'unlock');
+        // during the checklist the yellow dots say it; Mira's list leads the way
+        if (!AIT.Mentor.tutorialActive(s)) for (const n of got.notes) toast(n, 'unlock');
         if (got.chapter) ui.chapters.push(got.chapter);
       }
       const list = suggestions(s, v);

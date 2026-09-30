@@ -1,6 +1,7 @@
-/* The mentor: a scripted tutorial for the first minutes, then a small set of
-   hand-written tips that each appear once, only when they are relevant, with
-   a cooldown between them. The game pauses while she is talking. */
+/* The mentor: a checklist that carries a new player through the first ten
+   minutes, then a small set of hand-written tips that each appear once, only
+   when they are relevant, with a cooldown between them. The game pauses while
+   she is talking, but never for the checklist. */
 (function (root) {
   const AIT = (root.AIT = root.AIT || {});
   const D = AIT.DATA, Sim = AIT.Sim;
@@ -20,107 +21,157 @@
     D.TECHS.filter((t) => !s.techs[t.id] && t.req.every((r) => s.techs[r])).sort((a, b) => a.cost - b.cost)[0];
   const lastModelDay = (s) => s.models.reduce((a, m) => Math.max(a, m.day), -1);
 
-  // ---------- the tutorial ----------
-  // Steps without `done` are read-only (the game pauses). Steps with `done`
-  // wait for the player to act; the game keeps running.
+  // ---------- the first ten minutes: Mira's checklist ----------
+  // Four acts take a new player from one gaming PC to a Small model in the
+  // Mission. Each objective is one line of instructions with live progress, a
+  // Show me button and a highlight on the thing to press. Objectives tick off
+  // the moment they are done (or are skipped if already done), the game never
+  // pauses for them, and Mira only speaks at the very start and the very end.
+  const trainRate = (s, v) => Math.max(0.01, (s.training ? v.trainPF : s.autoAlloc ? Math.max(0, v.effPF - v.need * 1.15) : v.effPF * s.allocTrain) * v.trainMult);
+  const smallDays = (s, v) => Math.ceil(D.SIZE_BY_ID.small.pfdays / trainRate(s, v));
+  const trainPct = (s) => (s.training ? [s.training.done, s.training.need, `${Math.floor((s.training.done / s.training.need) * 100)}%`] : null);
+  const hasSize = (s, id) => s.models.some((m) => m.size === id) || (s.training && s.training.size === id);
+  // days a Small run may take once the lab is set up; a smaller raise buys fewer GPUs,
+  // so the target is fixed when the objective starts, from the cash on hand
+  const smallTarget = (s) => (s.mentor && s.mentor.smallTarget) || 120;
+  const roomFor = (s, type) => {
+    const n = D.OFFICES[s.officeLevel].size, occ = Sim.occupied(s);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!Sim.canPlace(s, type, x, y, occ)) return true;
+    return false;
+  };
+  const noRoom = ' No free floor? Sell a GPU with the tag tool in the toolbar, then add the AC.';
+
+  const ACTS = {
+    garage: { n: 1, title: 'The garage', quote: 'One gaming PC and a lot of fog. Let’s turn this into a lab.' },
+    money: { n: 2, title: 'First believers', quote: 'A working model means investors will take your call.' },
+    move: { n: 3, title: 'Moving out', quote: 'A garage can’t train anything bigger. The Mission can.' },
+    small: { n: 4, title: 'A real model', quote: 'Now train something people will actually pay for.' },
+  };
+
   const TUTORIAL = [
     {
-      id: 'hello',
-      lines: [
-        "Hi, I'm Mira. I started two AI labs back when nobody believed in scaling. Your investors asked me to keep an eye on you.",
-        'Here is the whole game in one sentence: turn compute into smarter models, turn models into money, and reach AGI before the other labs do.',
-      ],
-    },
-    {
-      id: 'garage',
-      lines: [
-        'This garage is your company. The black tower by the wall is a gaming rig. It gives you 1 PF of compute, one petaFLOP per second.',
-        "One rig can't train anything useful yet. Let's fix that.",
-      ],
-    },
-    {
-      id: 'rigs',
-      lines: ['Pick Compute in the build toolbar on the left, choose Gaming Rig, then tap three empty floor tiles. On a computer you can drag across tiles to place several at once.'],
-      task: 'Place 3 more Gaming Rigs',
-      progress: (s) => `${Math.min(3, Math.max(0, count(s, 'rig') - 1))}/3`,
-      done: (s) => count(s, 'rig') >= 4,
-      after: () => AIT.Render.setTool(null),
+      id: 'rigs', act: 'garage',
+      title: 'Build 3 more gaming rigs',
+      how: 'Open Compute in the build toolbar on the left, pick Gaming Rig, then tap empty floor. Drag to place a row.',
       go: 'build:compute',
       highlight: ['#tools [data-cat="compute"]', '#dock [data-item="rig"]'],
+      progress: (s) => [Math.min(3, count(s, 'rig') - 1), 3],
+      done: (s) => count(s, 'rig') >= 4 || s.officeLevel > 0,
     },
     {
-      id: 'heat',
-      lines: [
-        'Good. Every GPU turns power into heat. Keep an eye on the Heat bar at the top of the build shelf, and on the compute number in the bar at the bottom.',
-        'If heat goes above cooling, all your GPUs glow red and slow down. Box fans and AC units are cheap, and it does not matter where you put them. The Sunset fog helps, but only a little.',
-      ],
-      go: 'build:cooling',
-      highlight: ['[data-coach="heat"]'],
-    },
-    {
-      id: 'train',
-      lines: ['Now the fun part. Open Models with the round button at the top and start a Tiny training run. Licensed data costs a little, but it keeps the lawyers away.'],
-      task: 'Start training a Tiny model',
-      done: (s) => !!s.training || s.models.length > 0,
-      go: 'models',
+      id: 'train', act: 'garage',
+      title: 'Train your first model',
+      how: 'Open Models with the round button at the top. Tiny with licensed data is ready: press Start training.',
+      go: 'models:train:tiny',
       highlight: ['#rail [data-screen="models"]', '[data-act="start-train"]'],
+      done: (s) => !!s.training || s.models.length > 0,
     },
     {
-      id: 'wait',
-      lines: ['Training is measured in PF-days, and a Tiny model needs 60. Press 3× at the top to speed up time, and watch the loss curve drop.'],
-      task: 'Wait for your model to finish',
-      progress: (s) => (s.training ? `${Math.floor((s.training.done / s.training.need) * 100)}%` : ''),
-      done: (s) => s.models.length > 0,
+      id: 'speed', act: 'garage',
+      title: 'Speed up time',
+      how: 'Training is measured in days. Press one of the fast-forward buttons at the top left. Space pauses.',
       highlight: ['#speed'],
+      progress: trainPct,
+      done: (s) => (AIT.game && AIT.game.speed >= 2) || s.models.length > 0,
     },
     {
-      id: 'deploy',
-      lines: ['Your first model! It scores around 8 on OmniBench. The big labs sit in the high 20s, but everyone starts somewhere. Press Deploy so people can subscribe.'],
-      task: 'Deploy your model',
+      id: 'deploy', act: 'garage',
+      title: 'Put your model online',
+      how: 'When training finishes, press Deploy so people can subscribe at $20 a month.',
+      go: 'models:library',
+      highlight: ['[data-modal="reveal-deploy"]', '[data-act="deploy"]'],
+      progress: trainPct,
       done: (s) => !!s.flagshipId,
-      go: 'models',
-      highlight: ['#rail [data-screen="models"]', '[data-act="deploy"]'],
     },
     {
-      id: 'subs',
-      lines: [
-        "You're live. Subscribers pay $20 a month. How many you get depends on your OmniBench score against rivals, your hype and your price.",
-        'Every subscriber also needs compute. The Auto split in Models serves them first and trains with whatever is left.',
-      ],
-      highlight: ['#st-subs'],
-    },
-    {
-      id: 'raise',
-      lines: [
-        'A real model means investors will take your call. Raising money is optional: you sell a slice of the company for cash to grow faster. The slice you keep is what you are worth at the end.',
-        'Open Money and pitch. You can take an offer, push for a better price, or walk away and grow on revenue instead.',
-      ],
-      task: 'Pitch investors',
-      done: (s) => s.rounds.length > 0 || s.funding.pitches > 0,
-      go: 'finance',
+      id: 'raise', act: 'money',
+      title: 'Raise a pre-seed round',
+      how: 'Open Money › Funding and pitch. Take the offer you like: you sell a small slice of the company for cash to grow.',
+      go: 'finance:funding',
       highlight: ['#rail [data-screen="finance"]', '[data-act="pitch"]', '[data-act="accept"]'],
+      done: (s) => s.rounds.length > 0,
+      skip: 'Raising is optional, but a garage can’t pay for the next step on its own.',
     },
     {
-      id: 'hire',
-      lines: ['Money is for people and GPUs. Build a standing desk from the Office shelf in the build toolbar, then hire a researcher from Team. Researchers earn research points.'],
-      task: 'Hire your first employee',
+      id: 'research', act: 'money',
+      title: 'Research Scaling Laws',
+      how: 'Research points pile up on their own. Spend 20 in R&D: Scaling Laws unlocks Small models.',
+      go: 'research:avail',
+      highlight: ['#rail [data-screen="research"]', '.tech[data-id="scaling_laws"]', '[data-act="research"][data-id="scaling_laws"]'],
+      progress: (s) => [Math.min(20, Math.floor(s.rp)), 20, s.rp >= 20 ? 'ready' : `${Math.floor(s.rp)} / 20 RP`],
+      done: (s) => !!s.techs.scaling_laws,
+    },
+    {
+      id: 'move', act: 'move',
+      title: 'Move to the Mission',
+      how: 'Open Real estate at the bottom of the build toolbar and move into the Victorian flat: more power, and room for workstations.',
+      go: 'hq:office',
+      highlight: ['#tools [data-go="hq:office"]', '[data-key="move"]'],
+      progress: (s) => (s.officeLevel ? null : [Math.min(s.cash, D.OFFICES[1].moveCost), D.OFFICES[1].moveCost, s.cash >= D.OFFICES[1].moveCost ? 'you can afford it' : `${money(s.cash)} of ${money(D.OFFICES[1].moveCost)}`]),
+      done: (s) => s.officeLevel >= 1,
+    },
+    {
+      id: 'compute', act: 'move',
+      title: (s) => `Get a Small run under ${smallTarget(s)} days`,
+      start: (s, v, st) => (st.smallTarget = s.cash >= 380e3 ? 120 : 180),
+      // while the GPUs are throttled by heat, more GPUs won't help: point at cooling instead
+      how: (s, v) => (v.heat > v.cooling ? `Your GPUs are overheating and run at ${Math.round(v.thermal * 100)}% speed: ${kw(v.heat)} of heat, ${kw(v.cooling)} of cooling. More GPUs won't help until you add AC units from the Cooling shelf.${roomFor(s, 'ac') ? '' : noRoom}` : 'A Small model needs 6,000 PF-days. Fill the flat with 4-GPU workstations until it fits. Keep about $60k for its training data.'),
+      go: (s, v) => (v.heat > v.cooling ? 'build:cooling' : 'build:compute'),
+      highlight: (s, v) => (v.heat > v.cooling ? ['#tools [data-cat="cooling"]', '[data-coach="heat"]', '#dock [data-item="ac"]'] : ['#tools [data-cat="compute"]', '#dock [data-item="workstation"]']),
+      progress: (s, v) => {
+        const d = smallDays(s, v);
+        return [Math.min(1, smallTarget(s) / d), 1, d > 3650 ? 'Small: over 10 years' : `Small: ${d.toLocaleString('en-US')} days`];
+      },
+      done: (s, v) => smallDays(s, v) <= smallTarget(s) || hasSize(s, 'small'),
+    },
+    {
+      id: 'cool', act: 'move',
+      title: 'Keep it cool',
+      how: (s) => 'GPUs turn power into heat. Add AC units until heat is below cooling. It doesn’t matter where they stand.' + (roomFor(s, 'ac') ? '' : noRoom),
+      go: 'build:cooling',
+      highlight: ['#tools [data-cat="cooling"]', '[data-coach="heat"]', '#dock [data-item="ac"]'],
+      when: (s, v) => v.heat > v.cooling, // only when it is needed
+      progress: (s, v) => [Math.min(v.cooling, v.heat), v.heat, `${kw(v.heat)} heat · ${kw(v.cooling)} cooling`],
+      done: (s, v) => v.heat <= v.cooling,
+    },
+    {
+      id: 'small', act: 'small',
+      title: 'Train a Small model',
+      how: 'In Models, pick Small. Licensed data is enough for now. It scores about twice your Tiny.',
+      go: 'models:train:small',
+      highlight: ['#rail [data-screen="models"]', '[data-act="pick-size"][data-id="small"]', '[data-act="start-train"]'],
+      done: (s) => hasSize(s, 'small') || s.models.some((m) => m.cap > 14),
+    },
+    {
+      id: 'campaign', act: 'small',
+      title: 'Run a hype campaign',
+      how: 'Hype brings subscribers and fades every day. Start the free Cryptic Hype Thread in Market › Marketing.',
+      go: 'market:marketing',
+      highlight: ['#rail [data-screen="market"]', '[data-act="campaign"][data-id="thread"]'],
+      when: (s) => AIT.Progress.has(s, 'tab:market'),
+      done: (s) => s.log.some((e) => e.a === 'campaign'),
+    },
+    {
+      id: 'ship', act: 'small',
+      title: 'Ship the Small model',
+      how: 'Let it train. 8× is fine while you wait. Then deploy it: your score roughly doubles.',
+      highlight: ['#speed', '[data-modal="reveal-deploy"]', '[data-act="deploy"]'],
+      progress: trainPct,
+      done: (s) => !!(s.flagshipId && s.models.find((m) => m.id === s.flagshipId && m.cap > 14)),
+    },
+    {
+      id: 'hire', act: 'small',
+      title: 'Hire a researcher',
+      // a researcher costs $7-19k a month: only once the lab can carry it for most of a year
+      when: (s, v) => v.profitMonth >= 15000 || s.cash >= 9 * Math.max(15000, 15000 - v.profitMonth),
+      how: (s) => (seats(s) > s.staff.length ? 'Revenue is growing. Open Team › Hiring and hire a researcher: they earn research points every day.' : 'Everyone needs a desk. Build a standing desk from the Office shelf, then hire in Team › Hiring.'),
+      go: (s) => (seats(s) > s.staff.length ? 'team:hire' : 'build:office'),
+      highlight: (s) => (seats(s) > s.staff.length ? ['#rail [data-screen="team"]', '[data-act="hire"]'] : ['#tools [data-cat="office"]', '#dock [data-item="desk"]']),
       done: (s) => s.staff.length >= 2,
-      go: (s) => (seats(s) > s.staff.length ? 'team' : 'build:office'),
-      highlight: (s) =>
-        seats(s) > s.staff.length
-          ? ['#rail [data-screen="team"]', '[data-act="hire"]']
-          : ['#tools [data-cat="office"]', '#dock [data-item="desk"]'],
-    },
-    {
-      id: 'research',
-      lines: [
-        'Research points unlock bigger models and better hardware. Scaling Laws comes first and unlocks Small models, but a Small model needs about 6,000 PF-days. A garage cannot do that. Move into a flat in the Mission and fill it with workstations first.',
-        "That's the basics. The card at the top right shows your next milestone, and the orange tab at the bottom opens your company with everything that needs you. I'll drop in when something important comes up. This is a long road from the Sunset to Treasure Island. Go build something.",
-      ],
-      go: 'research',
-      highlight: ['#rail [data-screen="research"]'],
     },
   ];
+  const INTRO = "Hi, I'm Mira. I've started two AI labs, back when nobody believed in scaling. Your job: turn this garage into a lab and beat the big Bay Area labs to AGI. I'll keep a checklist at the top right. Do what it says, and press Show me whenever you're lost.";
+  const OUTRO = "Your first real model is live and the garage is behind you. From here the milestone card at the top right points the way, and I'll speak up when something needs you. Good luck out there.";
 
   // ---------- tips, in priority order ----------
   // Each shows at most once per game. Urgent tips skip the cooldown.
@@ -145,13 +196,13 @@
       go: 'team',
     },
     {
-      id: 'slow_run', urgent: true,
+      id: 'slow_run', urgent: true, persist: 7, // a quake or a hot spell shouldn't trigger it
       when: (s, v) => s.training && v.trainPF * v.trainMult > 0 && (s.training.need - s.training.done) / (v.trainPF * v.trainMult) > 180,
       lines: (s, v) => [`Careful: at your current compute, ${s.training.name} needs another ${Math.round((s.training.need - s.training.done) / (v.trainPF * v.trainMult))} days. Buy more GPUs to speed it up, or cancel now and get half the data cost back.`],
       go: 'models',
     },
     {
-      id: 'capacity', urgent: true,
+      id: 'capacity', urgent: true, persist: 5,
       when: (s, v) => v.flagship && v.service < 0.85 && s.subs > 100,
       lines: ['Users are getting "at capacity" errors, and they will leave. Buy more GPUs, or lower the training share in Models so serving gets more compute.'],
       go: 'models',
@@ -316,21 +367,30 @@
   ];
 
   // ---------- state ----------
-  const m = { el: null, style: null, cur: null, page: 0, shown: 0, typeStart: 0, minimized: false, autoMin: false, lastClosedAt: -1e9, lastClosedDay: -1e9, completing: 0, hlKey: '' };
+  const m = {
+    el: null, card: null, style: null, cur: null, page: 0, shown: 0, typeStart: 0, minimized: false,
+    lastClosedAt: -1e9, lastClosedDay: -1e9, hlKey: '', cardKey: '', cardMin: false, flashAt: 0, seenStep: -1,
+  };
   const reduced = () => root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const sfx = (n) => AIT.Sound && AIT.Sound.play(n);
 
   function ensure(s) {
     if (!s.mentor) s.mentor = { step: 0, done: s.day > 60, seen: {}, off: false };
-    return s.mentor;
+    const st = s.mentor;
+    // v2 is the checklist. Anyone mid-way through the old tutorial restarts the
+    // checklist, which skips what they have already done.
+    if (st.v !== 2) {
+      st.v = 2;
+      if (!st.done) st.step = 0;
+      st.intro = st.intro || s.day > 0 || !!st.done;
+      st.completed = st.completed || {};
+    }
+    st.completed = st.completed || {};
+    return st;
   }
-
-  const linesOf = (s, v) => {
-    const l = m.cur.def.lines;
-    return typeof l === 'function' ? l(s, v) : l;
-  };
-  const resolve = (x, s) => (typeof x === 'function' ? x(s) : x);
+  const active = (st) => !st.done && !st.off;
+  const resolve = (x, s, v) => (typeof x === 'function' ? x(s, v || Sim.derive(s)) : x);
   const lastPage = () => m.page >= m.cur.lines.length - 1;
-  const isTaskPage = () => m.cur && m.cur.kind === 'tut' && m.cur.def.done && lastPage();
 
   // ---------- rendering ----------
   const FACE = `<svg viewBox="0 0 64 64" aria-hidden="true">
@@ -352,44 +412,34 @@
       <div class="m-body">
         <div class="m-head"><b>${NAME}</b><span class="eyebrow m-label"></span><button class="m-min" data-m="min" aria-label="Minimize">–</button></div>
         <p class="m-text" data-m="finish"></p>
-        <div class="m-task" data-m="expand"><span class="m-check" aria-hidden="true"></span><span class="m-task-t"></span><span class="m-task-p mono"></span></div>
+        <div class="m-task" data-m="expand" hidden><span class="m-check" aria-hidden="true"></span><span class="m-task-t">Mira has something to tell you</span></div>
         <div class="m-actions"></div>
       </div>`;
   }
 
+  // Mira's speech bubble: the welcome, the send-off and tips
   function renderPage(s) {
     const c = m.cur;
     const el = m.el;
-    const tut = c.kind === 'tut';
     el.hidden = false;
-    el.classList.toggle('tip', !tut);
-    el.querySelector('.m-label').textContent = tut ? `Tutorial ${ensure(s).step + 1} of ${TUTORIAL.length}` : 'Tip';
+    el.classList.toggle('tip', c.kind === 'tip');
+    el.querySelector('.m-label').textContent = c.kind === 'tip' ? 'Tip' : c.kind === 'intro' ? 'Welcome' : 'Checklist done';
     m.shown = reduced() ? Infinity : 0;
     m.typeStart = performance.now();
     el.querySelector('.m-text').textContent = reduced() ? c.lines[m.page] : '';
-    const task = isTaskPage();
-    const taskEl = el.querySelector('.m-task');
-    taskEl.hidden = !task;
-    taskEl.classList.remove('done');
-    if (task) el.querySelector('.m-task-t').textContent = c.def.task;
     const go = resolve(c.def.go, s);
     const btns = [];
-    if (tut) btns.push('<button class="btn ghost small" data-m="skip">Skip tutorial</button>');
-    if (go && (task || !tut)) btns.push('<button class="btn small" data-m="show">Show me</button>');
-    if (!task) btns.push(`<button class="btn primary small" data-m="next">${lastPage() ? (tut ? 'Continue' : 'Got it') : 'Next'}</button>`);
+    if (c.kind === 'intro') btns.push('<button class="btn ghost small" data-m="skip">I know the game</button>');
+    if (go && c.kind === 'tip') btns.push('<button class="btn small" data-m="show">Show me</button>');
+    btns.push(`<button class="btn primary small" data-m="next">${!lastPage() ? 'Next' : c.kind === 'intro' ? 'Let’s go' : 'Got it'}</button>`);
     el.querySelector('.m-actions').innerHTML = btns.join('');
     applyMinimized();
   }
 
   function applyMinimized() {
     m.el.classList.toggle('min', m.minimized);
-    if (m.cur && !isTaskPage()) {
-      // a minimized message collapses to a small "tap to read" pill
-      const taskEl = m.el.querySelector('.m-task');
-      taskEl.hidden = !m.minimized;
-      m.el.querySelector('.m-task-t').textContent = 'Mira has something to tell you';
-      m.el.querySelector('.m-task-p').textContent = '';
-    }
+    const taskEl = m.el.querySelector('.m-task');
+    if (taskEl) taskEl.hidden = !(m.cur && m.minimized);
     const stage = document.getElementById('stage');
     if (stage) stage.style.setProperty('--mentor-h', m.cur && !m.minimized ? m.el.offsetHeight + 10 + 'px' : '0px');
   }
@@ -402,16 +452,11 @@
   }
 
   function open(s, v, kind, def) {
-    m.cur = { kind, def, lines: [] };
-    m.cur.lines = linesOf(s, v);
+    m.cur = { kind, def, lines: typeof def.lines === 'function' ? def.lines(s, v) : def.lines };
     m.page = 0;
     m.minimized = false;
-    m.autoMin = false;
-    m.completing = 0;
     renderPage(s);
-    if (AIT.Sound) AIT.Sound.play('mentor');
-    // read-only tutorial steps bring the thing they talk about into view
-    if (kind === 'tut' && !def.done && def.go) AIT.UI.goTo(resolve(def.go, s));
+    sfx('mentor');
   }
 
   function close(s) {
@@ -419,21 +464,102 @@
     m.el.hidden = true;
     m.lastClosedAt = performance.now();
     m.lastClosedDay = s.day;
-    setHighlight([]);
     applyMinimized();
   }
 
-  function advanceTutorial(s, v) {
+  // ---------- the checklist card ----------
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const visible = (o, s, v) => !o.when || o.when(s, v);
+
+  // move to the next objective; ones already done before they were shown are skipped quietly
+  function advanceChecklist(s, v) {
     const st = ensure(s);
-    st.step++;
-    const next = TUTORIAL[st.step];
-    if (!next) {
-      st.done = true;
-      close(s);
+    if (m.flashAt) {
+      if (performance.now() - m.flashAt < (reduced() ? 250 : 900)) return;
+      m.flashAt = 0;
+      st.step++;
+    }
+    for (let guard = 0; guard < TUTORIAL.length + 1; guard++) {
+      const o = TUTORIAL[st.step];
+      if (!o) {
+        st.done = true;
+        st.finished = true;
+        return;
+      }
+      if (!visible(o, s, v) && !st.completed[o.id]) {
+        st.step++;
+        continue;
+      }
+      if (!st.started) st.started = {};
+      if (!st.started[o.id] && o.start) o.start(s, v, st);
+      st.started[o.id] = true;
+      if (o.done(s, v)) {
+        st.completed[o.id] = s.day;
+        if (m.seenStep === st.step) {
+          m.flashAt = performance.now(); // tick it off where the player can see it
+          sfx('unlock');
+          return;
+        }
+        st.step++;
+        continue;
+      }
       return;
     }
-    if (next.done && next.done(s, v)) return advanceTutorial(s, v);
-    open(s, v, 'tut', next);
+  }
+
+  function renderCard(s, v, blocked) {
+    const card = m.card;
+    const st = ensure(s);
+    const cur = TUTORIAL[st.step];
+    const on = active(st) && st.intro && !!cur;
+    document.body.classList.toggle('checklist-on', on);
+    if (!on) {
+      if (!card.hidden) {
+        card.hidden = true;
+        card.innerHTML = '';
+        m.cardKey = '';
+      }
+      return;
+    }
+    const act = ACTS[cur.act];
+    const inAct = TUTORIAL.map((o, i) => ({ o, i })).filter((x) => x.o.act === cur.act);
+    const rows = inAct
+      .filter((x) => (x.i < st.step ? !!st.completed[x.o.id] : x.i === st.step || visible(x.o, s, v)))
+      .map(({ o, i }) => {
+        const title = resolve(o.title, s, v);
+        if (i < st.step) return `<li class="done"><span class="ck" aria-hidden="true"></span><span>${esc(title)}</span></li>`;
+        if (i > st.step) return `<li class="next"><span class="ck" aria-hidden="true"></span><span>${esc(title)}</span></li>`;
+        const how = resolve(o.how, s, v);
+        return `<li class="cur${m.flashAt ? ' flash' : ''}"><span class="ck" aria-hidden="true"></span><div class="grow">
+          <div class="t">${esc(title)}</div>
+          ${m.cardMin ? '' : `<div class="how">${esc(how)}</div>
+          ${o.progress ? '<div class="prog"><div class="bar"><i id="obj-bar"></i></div><span id="obj-label"></span></div>' : ''}
+          <div class="acts">${o.go ? '<button class="btn small primary" data-m="obj-show">Show me</button>' : ''}${o.skip ? `<button class="obj-link" data-m="obj-skip" title="${esc(o.skip)}">Skip this step</button>` : ''}</div>`}
+        </div></li>`;
+      })
+      .join('');
+    const key = [st.step, m.flashAt ? 1 : 0, m.cardMin ? 1 : 0, rows].join('|');
+    if (key !== m.cardKey) {
+      card.innerHTML = `<div class="obj-head"><span class="obj-face">${FACE}</span><div class="grow"><div class="eyebrow">Checklist · part ${act.n} of 4</div><div class="obj-act">${esc(act.title)}</div></div><button class="obj-min" data-m="obj-min" aria-label="${m.cardMin ? 'Expand' : 'Collapse'} checklist" aria-expanded="${!m.cardMin}">${m.cardMin ? '+' : '–'}</button></div>
+        ${m.cardMin ? '' : `<p class="obj-quote">“${esc(act.quote)}”</p>`}
+        <ol class="obj-list">${rows}</ol>
+        ${m.cardMin ? '' : '<button class="obj-link obj-skipall" data-m="skip">Skip the tutorial</button>'}`;
+      m.cardKey = key;
+    }
+    card.hidden = false;
+    // only count an objective as seen once the list has caught up with the game,
+    // so loading a save skips finished ones instead of ticking them off one by one
+    if (!blocked && m.caughtUp) m.seenStep = st.step;
+    // progress changes every day, so it is updated in place
+    if (cur.progress && !m.cardMin) {
+      const p = cur.progress(s, v);
+      const barEl = card.querySelector('#obj-bar'), lab = card.querySelector('#obj-label');
+      if (barEl && lab) {
+        const r = p ? Math.max(0, Math.min(1, p[0] / (p[1] || 1))) : 0;
+        barEl.style.width = (m.flashAt ? 100 : r * 100).toFixed(1) + '%';
+        lab.textContent = p ? p[2] || `${Math.floor(p[0])} / ${p[1]}` : 'not started';
+      }
+    }
   }
 
   // ---------- controls ----------
@@ -451,8 +577,16 @@
       renderPage(g.s);
       return;
     }
-    if (m.cur.kind === 'tut') advanceTutorial(g.s, Sim.derive(g.s));
-    else close(g.s);
+    close(g.s);
+  }
+
+  function skipTutorial(s) {
+    const st = ensure(s);
+    st.done = true;
+    st.intro = true;
+    if (m.cur && m.cur.kind === 'intro') close(s);
+    setHighlight([]);
+    renderCard(s, Sim.derive(s));
   }
 
   function onClick(e) {
@@ -471,14 +605,30 @@
         m.minimized = false;
         applyMinimized();
       }
-    } else if (what === 'skip') {
-      ensure(g.s).done = true;
-      close(g.s);
-    } else if (what === 'show') {
+    } else if (what === 'skip') skipTutorial(g.s);
+    else if (what === 'show') {
       const go = resolve(m.cur.def.go, g.s);
       if (go) AIT.UI.goTo(go);
-      if (m.cur.kind === 'tip' && !isTaskPage()) close(g.s);
+      close(g.s);
     }
+  }
+
+  function onCardClick(e) {
+    const b = e.target.closest('[data-m]');
+    if (!b) return;
+    const s = AIT.game.s;
+    const st = ensure(s);
+    const cur = TUTORIAL[st.step];
+    const what = b.dataset.m;
+    if (what === 'obj-show' && cur) {
+      const go = resolve(cur.go, s);
+      if (go) AIT.UI.goTo(go);
+    } else if (what === 'obj-skip' && cur) {
+      st.step++;
+      m.flashAt = 0;
+    } else if (what === 'obj-min') m.cardMin = !m.cardMin;
+    else if (what === 'skip') return skipTutorial(s);
+    renderCard(s, Sim.derive(s));
   }
 
   // ---------- per-frame and periodic updates ----------
@@ -495,47 +645,26 @@
 
   function check(s, v, blocked) {
     const st = ensure(s);
-    if (m.cur) {
-      const def = m.cur.def;
-      if (isTaskPage()) {
-        if (def.progress) m.el.querySelector('.m-task-p').textContent = def.progress(s);
-        if (!m.completing && def.done(s, v)) {
-          m.completing = performance.now();
-          m.el.querySelector('.m-task').classList.add('done');
-          if (def.after) def.after(s);
-          if (m.minimized) {
-            m.minimized = false;
-            applyMinimized();
-          }
-        } else if (m.completing && performance.now() - m.completing > 900) {
-          advanceTutorial(s, v);
-          return;
-        }
-        // keep the office visible while the player places things
-        const placing = !!(AIT.Render.tool && AIT.Render.tool.mode === 'place');
-        if (placing !== m.autoMin) {
-          m.autoMin = placing;
-          m.minimized = placing;
-          applyMinimized();
-        }
-      }
-      const hl = def.highlight ? resolve(def.highlight, s) : [];
-      setHighlight(m.cur.kind === 'tut' && def.done && !lastPage() ? [] : hl);
+    const over = s.over && !s.over.sandbox;
+    if (active(st) && st.intro && !blocked) {
+      advanceChecklist(s, v);
+      m.caughtUp = true;
+    }
+    renderCard(s, v, blocked);
+    // the checklist's highlight shows whenever Mira isn't pointing at something else
+    const cur = active(st) && st.intro ? TUTORIAL[st.step] : null;
+    if (m.cur) setHighlight(m.cur.def.highlight ? resolve(m.cur.def.highlight, s, v) : cur && cur.highlight ? resolve(cur.highlight, s, v) : []);
+    else setHighlight(cur && cur.highlight ? resolve(cur.highlight, s, v) : []);
+    if (m.cur || blocked || st.off || over) return;
+
+    if (active(st) && !st.intro) {
+      st.intro = true;
+      open(s, v, 'intro', { lines: [INTRO] });
       return;
     }
-    if (blocked || st.off || (s.over && !s.over.sandbox)) return;
-
-    if (!st.done) {
-      const def = TUTORIAL[st.step];
-      if (!def) {
-        st.done = true;
-        return;
-      }
-      if (def.done && def.done(s, v)) {
-        st.step++;
-        return;
-      }
-      open(s, v, 'tut', def);
+    if (st.done && st.finished && !st.outro) {
+      st.outro = true;
+      open(s, v, 'outro', { lines: [OUTRO] });
       return;
     }
 
@@ -544,8 +673,19 @@
     const speed = SPEED_DAYS[(AIT.game && AIT.game.speed) || 1] || 1;
     const waitMs = Math.max(TIP_COOLDOWN_MIN_MS, TIP_COOLDOWN_MS / speed);
     const cooling = now - m.lastClosedAt < waitMs || s.day - m.lastClosedDay < TIP_COOLDOWN_DAYS;
+    st.since = st.since || {};
     for (const tip of TIPS) {
-      if (st.seen[tip.id] != null || (cooling && !tip.urgent) || !tip.when(s, v)) continue;
+      if (st.seen[tip.id] != null) continue;
+      const hit = tip.when(s, v);
+      // some conditions must hold for a while, so a short blip doesn't set them off
+      if (tip.persist) {
+        if (!hit) delete st.since[tip.id];
+        else if (st.since[tip.id] == null) st.since[tip.id] = s.day;
+        if (!hit || s.day - st.since[tip.id] < tip.persist) continue;
+      } else if (!hit) continue;
+      // during the checklist only urgent tips speak up, and not about what the checklist is explaining
+      if ((cooling || active(st)) && !tip.urgent) continue;
+      if (tip.id === 'overheat' && active(st) && ['compute', 'cool'].includes((TUTORIAL[st.step] || {}).id)) continue;
       st.seen[tip.id] = s.day;
       open(s, v, 'tip', tip);
       return;
@@ -555,11 +695,13 @@
   AIT.Mentor = {
     init() {
       m.el = document.getElementById('mentor');
+      m.card = document.getElementById('objectives');
       m.style = document.getElementById('coach-style');
       build();
       m.el.addEventListener('click', onClick);
+      m.card.addEventListener('click', onCardClick);
       root.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' || !m.cur || m.minimized || isTaskPage() || e.target.matches('input, textarea, button')) return;
+        if (e.key !== 'Enter' || !m.cur || m.minimized || e.target.matches('input, textarea, button')) return;
         e.preventDefault();
         next();
       });
@@ -567,7 +709,7 @@
     frame,
     check,
     // true while she is talking and the game should wait
-    blocking: () => !!m.cur && !m.minimized && !isTaskPage(),
+    blocking: () => !!m.cur && !m.minimized,
     reset() {
       if (m.cur) {
         m.cur = null;
@@ -576,22 +718,29 @@
       setHighlight([]);
       m.lastClosedAt = -1e9;
       m.lastClosedDay = -1e9;
+      m.flashAt = 0;
+      m.seenStep = -1;
+      m.caughtUp = false;
+      m.cardKey = '';
+      if (m.card) {
+        m.card.hidden = true;
+        m.card.innerHTML = '';
+      }
       applyMinimized();
     },
     enabled: (s) => !ensure(s).off,
-    tutorialActive: (s) => !ensure(s).done && !ensure(s).off,
+    tutorialActive: (s) => active(ensure(s)),
     setEnabled(s, on) {
       ensure(s).off = !on;
       if (!on && m.cur && m.cur.kind === 'tip') close(s);
     },
     replay(s) {
       const st = ensure(s);
-      st.step = 0;
-      st.done = false;
-      st.off = false;
+      Object.assign(st, { step: 0, done: false, off: false, intro: false, outro: false, finished: false, completed: {}, started: {}, smallTarget: null });
       AIT.Mentor.reset();
     },
     TUTORIAL,
     TIPS,
+    ACTS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

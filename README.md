@@ -152,16 +152,38 @@ is done. The game counts real play time
 **Extras.** 18 achievements saved in your browser, a quiet generated music
 loop you can switch off in the Menu, and synthesized sound effects.
 
-**Mentor.** Mira Castell, a founder who has built two labs, walks you through
-an 11-step tutorial: place rigs, watch the heat, train, deploy, raise money and
-hire. The game pauses while she talks, and each task finishes the moment you do
-it. After that she only speaks up with about 20 hand-written tips, each once
-per game and only when it applies (overheating, running out of runway,
-unused research points, each new office and so on). Non-urgent tips wait 20
-in-game days after her last message, plus 45 seconds of real time at 1×
-(shorter at higher speeds, never under 8 seconds), so fast play doesn't skip
-them. You can switch
-tips off or replay the tutorial from the Menu.
+**Mentor and the first ten minutes.** Mira Castell, a founder who has built
+two labs, says hello in one short message and then keeps a checklist at the
+top right. It takes a new player through the first ten minutes in four parts:
+
+1. **The garage:** build three more gaming rigs, train a Tiny model, speed up
+   time, deploy it.
+2. **First believers:** raise a pre-seed round (skippable), research Scaling
+   Laws.
+3. **Moving out:** move to the Mission, fill it with workstations until a
+   Small model fits in 120 days (180 on a smaller raise, so the plan fits the
+   budget), and add cooling if the GPUs overheat.
+4. **A real model:** train a Small model, run a free hype campaign, ship it,
+   and hire a researcher once the lab can afford one.
+
+Every item is one line of instructions with live progress (training %, days
+a Small run would take, research points), a Show me button that opens the
+right window or shelf, and a pulsing highlight on the thing to press. Items
+tick off the moment they are done, ones already done are skipped, and the
+game never pauses for the list. On phones it shrinks to a bar along the
+bottom of any open window. Afterwards Mira only speaks up with about 20
+hand-written tips, each once per game and only when it applies. During the
+checklist only urgent ones (out of cash, overheating) can interrupt, and
+tips about a slow run or overloaded servers wait until the problem has
+lasted a week, so a two-day earthquake doesn't set them off. Non-urgent tips
+wait 20 in-game days after her last message, plus 45 seconds of real time at
+1× (shorter at higher speeds, never under 8 seconds). You can switch tips off
+or replay the checklist from Options.
+
+Models also warns when a run would not beat your live model, the trap that
+made players retrain the same Tiny model over and over, and moving office
+asks for confirmation and then closes the window so you land in the new
+office.
 
 You win by finishing the AGI Project before any rival reaches 100 on
 OmniBench. You lose if a rival gets there first, or if you run out of cash for

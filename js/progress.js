@@ -22,7 +22,7 @@
     { id: 'cat:office', when: (s) => s.rounds.length > 0 || s.subs >= 250 || s.staff.length > 1 },
     { id: 'office:next', when: (s) => s.rounds.length > 0 || s.subs >= 250 },
     { id: 'cat:comfort', when: (s) => s.staff.length > 1, msg: 'New in Build: comfort items. Happy people work faster.' },
-    { id: 'tab:research', when: (s) => s.staff.length > 1 || s.rp >= 40, msg: 'New screen: R&D. Spend research points on new technology.' },
+    { id: 'tab:research', when: (s) => s.staff.length > 1 || s.rp >= 20, msg: 'New screen: R&D. Spend research points on new technology.' },
     { id: 'tab:market', when: (s) => !!s.flagshipId && s.subs >= 200, msg: 'New screen: Market. Set your price and run campaigns.' },
     { id: 'cat:power', when: (s, v) => s.officeLevel >= 1 || v.power > v.powerCap * 0.8, msg: 'New in Build: power. Add capacity before the lights flicker.' },
   ];

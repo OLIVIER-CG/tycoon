@@ -258,6 +258,43 @@ input[type='checkbox'] { accent-color: var(--bay); width: 18px; height: 18px; }
 .next.warn .dotmark, .sugg-row.warn .dotmark { background: var(--warn); }
 .next.good .dotmark, .sugg-row.good .dotmark { background: var(--good); }
 
+/* Mira's checklist: the first ten minutes */
+#objectives {
+  position: absolute; top: calc(62px + env(safe-area-inset-top, 0px)); right: 12px; z-index: 27; width: min(340px, calc(100% - 24px));
+  background: var(--glass); color: var(--hud-ink); border-radius: 10px; border-top: 4px solid var(--bridge);
+  box-shadow: var(--shadow); padding: 10px 12px 10px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - 140px); overflow-y: auto;
+}
+.obj-head { display: flex; align-items: center; gap: 10px; }
+.obj-face { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: var(--bridge-soft); }
+.obj-face svg { width: 100%; height: 100%; display: block; }
+.obj-head .eyebrow { color: var(--bridge); }
+.obj-act { font: 800 18px/1.15 var(--display); }
+.obj-min { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--hud-ink-2); font: 800 18px/1 var(--body); }
+.obj-min:hover { background: var(--hud-3); color: var(--hud-ink); }
+.obj-quote { font-size: 14px; font-style: italic; color: var(--hud-ink-2); }
+.obj-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.obj-list li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-radius: 7px; font-size: 14.5px; font-weight: 600; }
+.obj-list .ck { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--hud-4); flex-shrink: 0; margin-top: 1px; display: grid; place-items: center; }
+.obj-list li.done { color: var(--hud-ink-3); text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.3); }
+.obj-list li.done .ck, .obj-list li.cur.flash .ck { background: var(--good); border-color: var(--good); }
+.obj-list li.done .ck::after, .obj-list li.cur.flash .ck::after { content: ''; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+.obj-list li.next { color: var(--hud-ink-3); }
+.obj-list li.cur { background: rgba(255, 255, 255, 0.07); box-shadow: inset 3px 0 0 var(--bridge); padding: 9px 10px; }
+.obj-list li.cur .ck { border-color: var(--bridge); }
+.obj-list li.cur.flash { background: rgba(18, 160, 111, 0.22); box-shadow: inset 3px 0 0 var(--good); animation: obj-pop 0.5s ease-out; }
+@keyframes obj-pop { 40% { transform: scale(1.03); } }
+.obj-list .t { font: 800 16px/1.25 var(--display); color: var(--hud-ink); }
+.obj-list .how { font-size: 13.5px; font-weight: 500; line-height: 1.4; color: var(--hud-ink-2); margin-top: 3px; }
+.obj-list .prog { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.obj-list .prog .bar { flex: 1; background: rgba(255, 255, 255, 0.12); height: 6px; }
+.obj-list .prog .bar i { background: var(--bridge); }
+.obj-list .prog span { font-size: 12.5px; font-weight: 700; color: var(--hud-ink); white-space: nowrap; }
+.obj-list .acts { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.obj-list .acts .btn { height: 30px; }
+.obj-link { border: 0; background: transparent; padding: 2px 0; color: var(--hud-ink-3); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.obj-link:hover { color: var(--hud-ink); }
+.obj-skipall { align-self: flex-start; }
+
 /* news log over the world, like a sales feed */
 #feed {
   position: absolute; top: calc(70px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 4; width: min(430px, calc(100% - 360px));
@@ -440,6 +477,8 @@ input[type='checkbox'] { accent-color: var(--bay); width: 18px; height: 18px; }
   position: absolute; inset: 0; z-index: 25; display: grid; place-items: center;
   padding: calc(70px + env(safe-area-inset-top, 0px)) 20px calc(var(--bar-h) + 14px + env(safe-area-inset-bottom, 0px)) 72px;
 }
+/* during the checklist, windows leave room for it on the right */
+@media (min-width: 901px) { body.checklist-on #win-root { padding-right: 364px; } }
 .win-scrim { position: absolute; inset: 0; background: rgba(8, 10, 14, 0.32); }
 .win {
   position: relative; width: min(1100px, 100%); height: min(780px, 100%); min-height: 0;
@@ -830,7 +869,7 @@ input[type='checkbox'] { accent-color: var(--bay); width: 18px; height: 18px; }
 
 /* ---------- title screen ---------- */
 /* nothing of the game's chrome shows behind the title, only the office */
-body.title-on #hud-top, body.title-on #hud-right, body.title-on #tools, body.title-on #hud-bottom, body.title-on #advisor,
+body.title-on #hud-top, body.title-on #hud-right, body.title-on #tools, body.title-on #hud-bottom, body.title-on #advisor, body.title-on #objectives,
 body.title-on #feed, body.title-on .zoom, body.title-on #toasts, body.title-on #banner, body.title-on #mentor,
 body.title-on #dock, body.title-on #inspect, body.title-on #toolbar, body.title-on #win-root, body.title-on #notif-panel { display: none !important; }
 #title {
@@ -887,6 +926,15 @@ body.title-on #dock, body.title-on #inspect, body.title-on #toolbar, body.title-
   .sq-btn { height: 40px; min-width: 40px; padding: 0 9px; }
   .win-bar .sub { display: none; }
   #advisor { top: calc(122px + env(safe-area-inset-top, 0px)); left: 64px; right: 12px; width: auto; padding: 8px 10px; }
+  #objectives { top: calc(116px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; width: auto; padding: 8px 10px; gap: 6px; max-height: 46%; }
+  .obj-quote, .obj-face { display: none; }
+  .obj-list li.next, .obj-list li.done { display: none; }
+  /* over a full-screen window, the checklist shrinks to a bar along the bottom */
+  body.win-open #objectives { top: auto; bottom: 0; left: 0; right: 0; z-index: 45; border-radius: 12px 12px 0 0; max-height: 30%; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); }
+  body.win-open #objectives .obj-head, body.win-open #objectives .how, body.win-open #objectives .acts, body.win-open #objectives .obj-skipall { display: none; }
+  body.win-open #objectives .obj-list li.cur { padding: 4px 6px; background: none; box-shadow: none; }
+  body.win-open.checklist-on .win { padding-bottom: 58px; }
+  body.checklist-on .win-stats { display: none; }
   #advisor .hint { display: none; }
   #banner { top: auto; bottom: calc(var(--bar-h) + 58px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 24px); }
   #tools { top: auto; bottom: calc(var(--bar-h) + 12px + env(safe-area-inset-bottom, 0px)); transform: none; gap: 5px; }
