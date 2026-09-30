@@ -15,17 +15,14 @@
   <div id="app">
     <main id="stage">
       <canvas id="view" aria-label="Your office, seen from above"></canvas>
-      <div id="feed" title="Open the news"></div>
       <div id="banner" hidden></div>
       <div id="advisor"></div>
       <div id="objectives" hidden role="region" aria-label="Mira's checklist" aria-live="polite"></div>
       <div id="toolbar" hidden></div>
       <div id="inspect" hidden></div>
       <div id="mentor" class="mentor" hidden role="region" aria-label="Mentor" aria-live="polite"></div>
-      <div class="zoom" role="group" aria-label="Zoom">
-        <button data-zoom="in" aria-label="Zoom in">+</button>
-        <button data-zoom="out" aria-label="Zoom out">−</button>
-        <button data-zoom="fit" aria-label="Fit office to screen">Fit</button>
+      <div class="zoom">
+        <button data-zoom="fit" aria-label="Fit office to screen" title="Fit the office to the screen. Scroll or pinch to zoom.">Fit</button>
       </div>
       <div id="toasts" aria-live="polite"></div>
       <div id="dock" hidden></div>
@@ -47,8 +44,7 @@
 
     <div id="hud-right">
       <button id="notif-btn" class="sq-btn" aria-label="Notifications" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z" fill="currentColor"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span id="notif-count" class="badge" hidden></span></button>
-      <button id="feedback-btn" class="sq-btn labeled" aria-label="Send a snapshot and feedback to Claude" title="Send a snapshot and feedback to Claude"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H10l-6 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span>Feedback</span></button>
-      <button id="mute-btn" class="sq-btn" aria-label="Mute sound"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="x" d="M16 9l6 6M22 9l-6 6"/></svg></button>
+      <button id="feedback-btn" class="sq-btn" aria-label="Send a snapshot and feedback to Claude" title="Send a snapshot and feedback to Claude"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H10l-6 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg></button>
     </div>
 
     <nav id="tools" aria-label="Build"></nav>

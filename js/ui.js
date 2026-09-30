@@ -193,26 +193,19 @@
     finance: svg('<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v5M17.5 9.5v5"/>'),
     race: svg('<path d="M5.5 21V4"/><path d="M5.5 4.5h11l-2.2 4 2.2 4h-11"/>'),
   };
-  // left toolbar: build categories and tools
+  // left toolbar: build, sell, real estate
   const TOOL_ICON = {
     compute: svg('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 10.5h7"/><circle cx="12" cy="16" r="1.4" fill="currentColor"/>'),
-    cooling: svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5L12 6l2.5-1.5M9.5 19.5L12 18l2.5 1.5"/>'),
-    power: svg('<path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z" fill="currentColor" stroke="none"/>'),
-    office: svg('<path d="M3.5 10.5h17"/><path d="M5 10.5V20M19 10.5V20"/><rect x="8" y="5" width="8" height="5.5" rx="1"/><path d="M11 20h2"/>'),
-    comfort: svg('<path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8.5 3.5c0 1.5 1 1.5 1 3M12 3.5c0 1.5 1 1.5 1 3"/>'),
     sell: svg('<path d="M3.5 12.5l8-8h8v8l-8 8z"/><circle cx="15.5" cy="8.5" r="1.6"/>'),
+    build: svg('<path d="M14.5 4.5l5 5-2.5 2.5-5-5z" fill="currentColor"/><path d="M12 7l-8.5 8.5a1.8 1.8 0 0 0 2.5 2.5L14.5 9.5"/>'),
     building: svg('<path d="M4 21V6l8-3v18"/><path d="M12 9l8 3v9"/><path d="M7 9h2M7 12.5h2M7 16h2M15 14.5h2M15 18h2"/><path d="M2.5 21h19"/>'),
   };
   // bottom bar
   const STAT_ICON = {
     people: svg('<circle cx="9" cy="8" r="3.2" fill="currentColor"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0z" fill="currentColor"/><circle cx="17" cy="9" r="2.4" fill="currentColor"/><path d="M14.8 14.2a4.6 4.6 0 0 1 6.2 4.4v.9h-5.2" fill="currentColor"/>'),
-    hype: svg('<path d="M4 10v4h3l7 4V6l-7 4z" fill="currentColor"/><path d="M17.5 9a4 4 0 0 1 0 6"/>'),
     subs: svg('<circle cx="12" cy="8" r="3.5" fill="currentColor"/><path d="M5 20a7 7 0 0 1 14 0z" fill="currentColor"/>'),
     compute: TOOL_ICON.compute,
-    rp: ICON.research,
-    bench: svg('<path d="M7 4h10v5a5 5 0 0 1-10 0z" fill="currentColor"/><path d="M7 6H4.5a2.5 2.5 0 0 0 2.8 4M17 6h2.5a2.5 2.5 0 0 1-2.8 4M12 14v4M8.5 20.5h7"/>'),
-    align: svg('<path d="M12 3l7.5 3v5.5c0 4.6-3.2 8-7.5 9.5-4.3-1.5-7.5-4.9-7.5-9.5V6z" fill="currentColor"/>'),
-    wallet: svg('<rect x="3" y="6.5" width="18" height="13" rx="2.5" fill="currentColor"/><path d="M5 6.5l10-3 1.5 3" /><rect x="14.5" y="11" width="6.5" height="4.5" rx="1.5" fill="var(--hud-3)" stroke="none"/>'),
+    wallet: svg('<rect x="3" y="6.5" width="18" height="13" rx="2.5" fill="currentColor"/><path d="M5 6.5l10-3 1.5 3" /><rect x="14.5" y="11" width="6.5" height="4.5" rx="1.5" fill="var(--hud)" stroke="none"/>'),
   };
   const CAT_VAR = { compute: 'var(--cat-compute)', cooling: 'var(--cat-cooling)', power: 'var(--cat-power)', office: 'var(--cat-office)', comfort: 'var(--cat-comfort)' };
   const CAMP_ICON = {
@@ -235,9 +228,9 @@
     el.className = 'toast ' + kind;
     el.textContent = text;
     box.prepend(el);
-    while (box.children.length > 3) box.lastChild.remove();
-    setTimeout(() => el.classList.add('out'), 4500);
-    setTimeout(() => el.remove(), 5100);
+    while (box.children.length > 2) box.lastChild.remove();
+    setTimeout(() => el.classList.add('out'), 3600);
+    setTimeout(() => el.remove(), 4200);
   }
 
   // ---------- what deserves attention, most urgent first ----------
@@ -440,7 +433,7 @@
   // Real estate: the office you have, the next one, and the whole city
   function heatBlock(s, v) {
     return `${meter('Heat vs cooling', v.heat, v.cooling, fmt.kw, 0.85, 'heat')}
-      ${v.thermal < 1 ? `<div class="callout bad"><b>Too hot: every GPU runs at ${fmt.pct(v.thermal)} speed.</b>Add cooling from the build toolbar. Where it stands doesn't matter.</div>` : ''}`;
+      ${v.thermal < 1 ? `<div class="callout bad"><b>Too hot: every GPU runs at ${fmt.pct(v.thermal)} speed.</b>Add cooling: Build › Cooling. Where it stands doesn't matter.</div>` : ''}`;
   }
   function renderOffice(s, v) {
     const o = v.office, next = D.OFFICES[s.officeLevel + 1];
@@ -485,7 +478,6 @@
     const v = Sim.derive(s);
     const cats = D.ITEM_CATS.filter((c) => Progress.has(s, 'cat:' + c.id));
     if (!cats.some((c) => c.id === ui.buildCat)) ui.buildCat = 'compute';
-    const cat = D.ITEM_CATS.find((c) => c.id === ui.buildCat);
     const all = Object.entries(D.ITEMS).filter(([, d]) => d.cat === ui.buildCat);
     const locked = all.filter(([t]) => Sim.itemLocked(s, t));
     const items = all.filter(([t]) => !Sim.itemLocked(s, t) || t === (locked[0] && locked[0][0]));
@@ -496,7 +488,7 @@
     };
     return `
       <div class="dock-bar">
-        <h3>${cat.name}</h3>
+        <div class="dock-cats" role="tablist" aria-label="Item category">${cats.map((x) => `<button class="dock-cat${x.id === ui.buildCat ? ' on' : ''}" role="tab" aria-selected="${x.id === ui.buildCat}" data-act="cat" data-cat="${x.id}" data-id="${x.id}">${x.name}</button>`).join('')}</div>
         <div class="dock-meters">
           ${mini('Power', v.power, v.powerCap, fmt.kw)}
           ${mini('Heat', v.heat, v.cooling, fmt.kw, 'heat')}
@@ -523,15 +515,11 @@
       </div>`;
   }
 
-  // the left toolbar: one button per build category, then selling and real estate
+  // the left toolbar: build, sell and real estate. Categories are tabs on the build shelf.
   function renderTools(s) {
-    const cats = D.ITEM_CATS.filter((c) => Progress.has(s, 'cat:' + c.id));
     const tool = AIT.Render.tool;
     const selling = !!(tool && tool.mode === 'sell');
-    const html = `<div class="tool-title">BUILD</div>${cats
-      .map((c) => `<button class="tool-btn${ui.trayOpen && ui.buildCat === c.id && !selling ? ' on' : ''}" data-act="cat" data-cat="${c.id}" data-id="${c.id}" aria-label="${c.name}">${TOOL_ICON[c.id] || TOOL_ICON.compute}<span class="lbl">${c.name}</span></button>`)
-      .join('')}
-      <div class="tool-sep"></div>
+    const html = `<button class="tool-btn${ui.trayOpen && !selling ? ' on' : ''}" data-act="build" aria-label="Build">${TOOL_ICON.build}<span class="lbl">Build</span></button>
       <button class="tool-btn sell${selling ? ' on' : ''}" data-act="sellmode" aria-label="Sell items">${TOOL_ICON.sell}<span class="lbl">${selling ? 'Selling: tap an item' : 'Sell'}</span></button>
       ${Progress.has(s, 'office:next') || s.officeLevel > 0 ? `<button class="tool-btn" data-go="hq:office" aria-label="Real estate">${TOOL_ICON.building}<span class="lbl">Real estate</span></button>` : ''}`;
     set('tools', html);
@@ -656,7 +644,7 @@
       return `
       <div class="row between wrap"><div class="callout grow">${hireAdvice(s, v)}</div>
         <div class="stack tight" style="align-items:flex-end"><button class="btn" data-act="refresh"${disabled(s.cash < refreshCost)}>Find more candidates · ${money(refreshCost)}</button><span class="tiny faint">New faces in ${nextIn} days · ${free} free desk${free === 1 ? '' : 's'}</span></div></div>
-      ${free <= 0 ? '<div class="callout warn">Every desk is taken. Build a desk from the build toolbar before you hire.</div>' : ''}
+      ${free <= 0 ? '<div class="callout warn">Every desk is taken. Build a desk (Build › Office) before you hire.</div>' : ''}
       <div class="cand-grid">${cands || '<div class="empty">No one is looking right now.</div>'}</div>
       <p class="note">Hiring pays one month of salary as a signing bonus. Everyone needs a desk.</p>`;
     return `
@@ -1155,8 +1143,6 @@
       set('st-' + c.id, c.html);
     }
   }
-  const under = (r, color) => `<span class="u"><i style="width:${(Math.max(0, Math.min(1, r)) * 100).toFixed(0)}%;background:${color}"></i></span>`;
-  const trend = (now, before) => (before == null || Math.abs(now - before) < Math.abs(before) * 0.005 ? '' : now > before ? '<span class="up">▲</span>' : '<span class="down">▼</span>');
 
   function renderTop(s, v) {
     set('co-name', esc(s.company));
@@ -1165,20 +1151,15 @@
     const has = (id) => Progress.has(s, id);
     const team = s.staff.filter((p) => !p.founder);
     const avg = team.length ? team.reduce((a, p) => a + p.morale, 0) / team.length : 100;
-    const prev = s.history[s.history.length - 1];
+    // five numbers, quiet unless something is wrong; the rest lives in the windows
     const left = [];
-    if (has('tab:team')) left.push({ id: 'staff', go: 'team', title: `${s.staff.length} people · morale ${Math.round(avg)}%`, html: `${STAT_ICON.people}<span class="v">${s.staff.length}</span>${under(avg / 100, '#f5c542')}` });
-    if (has('hud:hype')) left.push({ id: 'hype', go: 'market:marketing', title: `Hype ${Math.round(s.hype)} of 100`, html: `${STAT_ICON.hype}<span class="v">${Math.round(s.hype)}</span>${under(s.hype / 100, '#ff6b4a')}` });
-    if (has('hud:subs')) left.push({ id: 'subs', go: 'market', title: `${fmt.num(s.subs)} subscribers · ${fmt.pct(s.share || 0, 1)} market share`, html: `${STAT_ICON.subs}<span class="v">${fmt.num(s.subs)}</span>${under((s.share || 0) * 2, '#2fd3b5')}` });
+    if (has('tab:team')) left.push({ id: 'staff', go: 'team', cls: avg < 40 ? 'warn' : '', title: `${s.staff.length} people · morale ${Math.round(avg)}%`, html: `${STAT_ICON.people}<span class="v">${s.staff.length}</span>` });
+    if (has('hud:subs')) left.push({ id: 'subs', go: 'market', title: `${fmt.num(s.subs)} subscribers · ${fmt.pct(s.share || 0, 1)} market share`, html: `${STAT_ICON.subs}<span class="v">${fmt.num(s.subs)}</span>` });
     const hot = v.thermal < 0.99 || v.powerFactor < 1;
-    left.push({ id: 'compute', go: 'build:compute', cls: hot ? 'bad' : '', title: `${fmt.pf(v.effPF)} usable compute${v.thermal < 0.99 ? ` · too hot, GPUs at ${fmt.pct(v.thermal)}` : v.powerFactor < 1 ? ' · short of power' : ''}`, html: `${STAT_ICON.compute}<span class="v">${fmt.pf(v.effPF)}</span>${under(hot ? Math.min(v.thermal, v.powerFactor) : 1, hot ? '#ff6b6b' : '#33a8ff')}` });
-    if (has('tab:research')) left.push({ id: 'rp', go: 'research', title: `${Math.floor(s.rp)} research points, +${v.rpDay.toFixed(1)} a day`, html: `${STAT_ICON.rp}<span class="v">${fmt.num(Math.floor(s.rp))}</span>` });
-    if (has('hud:bench')) left.push({ id: 'bench', go: 'race', title: `OmniBench: your model ${v.flagship ? v.flagship.cap.toFixed(1) : '–'}, top rival ${v.topRival ? v.topRival.cap.toFixed(1) : '–'}`, html: `${STAT_ICON.bench}<span class="v">${v.flagship ? v.flagship.cap.toFixed(1) : '–'}</span><span class="k">/ ${v.topRival ? v.topRival.cap.toFixed(1) : '–'}</span>` });
+    left.push({ id: 'compute', go: 'build:compute', cls: hot ? 'bad' : '', title: `${fmt.pf(v.effPF)} usable compute${v.thermal < 0.99 ? ` · too hot, GPUs at ${fmt.pct(v.thermal)}` : v.powerFactor < 1 ? ' · short of power' : ''}`, html: `${STAT_ICON.compute}<span class="v">${fmt.pf(v.effPF)}</span>` });
     statChips('stats-left', left);
     const right = [];
-    if (has('hud:subs')) right.push({ id: 'rev', go: 'finance', title: `Revenue ${money(v.mrr)} a month`, html: `<span class="k">Revenue:</span><span class="v">${money(v.mrr)}</span>${trend(v.mrr, prev && prev.revenue)}` });
-    right.push({ id: 'profit', go: 'finance', title: `Profit ${money(v.profitMonth)} a month`, html: `<span class="k">Profit:</span><span class="v" style="color:${v.profitMonth >= 0 ? '#4fdc97' : '#ff7f79'}">${v.profitMonth >= 0 ? '+' : ''}${money(v.profitMonth)}</span>` });
-    if (has('hud:val')) right.push({ id: 'val', go: 'finance:funding', title: `Valuation ${money(v.valuation)} · you own ${fmt.pct(s.equity, 0)}`, html: `<span class="k">Value:</span><span class="v">${money(v.valuation)}</span>` });
+    right.push({ id: 'profit', go: 'finance', cls: v.profitMonth < 0 ? 'neg' : '', title: `Profit ${money(v.profitMonth)} a month · revenue ${money(v.mrr)}`, html: `<span class="k">Profit</span><span class="v">${v.profitMonth >= 0 ? '+' : ''}${money(v.profitMonth)}/mo</span>` });
     right.push({ id: 'cash', go: 'finance', cls: 'cash' + (s.cash < 0 ? ' bad' : ''), title: `Cash ${money(s.cash)}`, html: `${STAT_ICON.wallet}<span class="v">${money(s.cash)}</span>` });
     statChips('stats-right', right);
   }
@@ -1290,17 +1271,16 @@
     $('stage').style.setProperty('--dock-h', show ? dock.offsetHeight + 'px' : '0px');
   }
 
-  // ---------- over the world: goal tracker, warnings, news feed ----------
+  // ---------- over the world: goal tracker, warnings, notifications ----------
   function renderAdvisor(s, v, list) {
     const tutorial = AIT.Mentor.tutorialActive(s);
     if (tutorial || (isPhone() && (ui.trayOpen || AIT.Render.tool))) return set('advisor', '');
+    // just the next milestone; everything else that needs you is under the bell
     const goal = D.GOALS.find((g) => !s.goals[g.id]);
-    const next = list.find((x) => x.kind !== 'bad');
-    set(
-      'advisor',
-      `${goal ? `<div class="eyebrow">Milestone ${Object.keys(s.goals).length + 1} / ${D.GOALS.length}</div><div class="goal-text">${goal.text}</div><div class="hint">${goal.hint}</div>` : '<div class="eyebrow">All milestones done</div><div class="goal-text">You built the future.</div>'}
-      ${next ? `<div class="next ${next.kind}"><span class="dotmark"></span><span class="text">${esc(next.text)}</span><button class="btn small" data-go="${next.go}">${next.cta}</button></div>` : ''}`,
-    );
+    const el = $('advisor');
+    const tip = goal ? goal.hint : '';
+    if (el.title !== tip) el.title = tip;
+    set('advisor', goal ? `<div class="eyebrow">Next milestone · ${Object.keys(s.goals).length + 1} of ${D.GOALS.length}</div><div class="goal-text">${goal.text}</div>` : '<div class="eyebrow">All milestones done</div><div class="goal-text">You built the future.</div>');
   }
 
   function renderBanner(list) {
@@ -1332,7 +1312,6 @@
     );
   }
 
-  const shortDate = (day) => Sim.dateOf(day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).toUpperCase();
   function renderStage(s, v, list) {
     renderAdvisor(s, v, list);
     renderBanner(list);
@@ -1340,7 +1319,6 @@
     const tool = AIT.Render.tool;
     set('toolbar', tool ? `<span>${tool.mode === 'sell' ? 'Selling: tap an item to get half its price back' : `Placing ${D.ITEMS[tool.type].name} · ${money(Sim.itemCost(s, tool.type))} each`}</span><button class="btn small" data-act="notool">Done</button>` : '');
     $('toolbar').hidden = !tool;
-    set('feed', s.news.slice(0, 4).map((n) => `<div class="fl kind-${n.kind}"><span class="d">${shortDate(n.day)}</span><span class="t">${esc(n.text)}</span></div>`).join(''));
   }
 
   function renderInspect(s) {
@@ -1584,16 +1562,16 @@
   function checkAchievements(s, v) {
     if (s.mode === 'sandbox') return;
     const got = achievements();
-    for (const a of D.ACHIEVEMENTS) {
-      if (got[a.id] || !a.check(s, v)) continue;
-      got[a.id] = new Date().toISOString().slice(0, 10);
-      try {
-        localStorage.setItem(ACH_KEY, JSON.stringify(got));
-      } catch (e) {
-        /* storage unavailable */
-      }
-      toast(`Achievement unlocked: ${a.name}`, 'goal');
+    const fresh = D.ACHIEVEMENTS.filter((a) => !got[a.id] && a.check(s, v));
+    if (!fresh.length) return;
+    for (const a of fresh) got[a.id] = new Date().toISOString().slice(0, 10);
+    try {
+      localStorage.setItem(ACH_KEY, JSON.stringify(got));
+    } catch (e) {
+      /* storage unavailable */
     }
+    // one toast, however many arrive at once
+    toast(fresh.length === 1 ? `Achievement: ${fresh[0].name}` : `${fresh.length} achievements unlocked`, 'goal');
   }
   function showAchievements() {
     const got = achievements();
@@ -1638,7 +1616,7 @@
       <li><b>Grow.</b> Hire, research and move across the city from the Outer Sunset to Treasure Island. Raising money is optional.</li>
       <li><b>Win.</b> Research the AGI Blueprint and finish the AGI Project before any rival reaches 100.</li>
     </ol>
-    <p class="note">The round buttons at the top open your windows; the orange tab at the bottom opens your company, with what needs you next. Keys: Space pauses, 1–3 set speed, Esc closes and cancels placing. Scroll or pinch to zoom, drag to pan.</p>`;
+    <p class="note">The round buttons at the top open your windows; the company button at the bottom opens your headquarters, with what needs you next. Keys: Space pauses, 1–3 set speed, Esc closes and cancels placing. Scroll or pinch to zoom, drag to pan.</p>`;
 
   function newGameNote() {
     if (ui.ng.mode === 'daily') return `Today's seed is ${dailyLabel(dailySeed())}: everyone gets the same candidates, events and rival moves. Normal difficulty. Your result goes on today's leaderboard.`;
@@ -1904,7 +1882,8 @@
     else showOptions();
   }
   function paintMute() {
-    const mute = $('mute-btn');
+    const mute = $('mute-btn'); // optional: sound lives in Options
+    if (!mute) return;
     mute.classList.toggle('off', AIT.Sound.muted);
     mute.setAttribute('aria-label', AIT.Sound.muted ? 'Turn sound on' : 'Mute sound');
     mute.title = mute.getAttribute('aria-label');
@@ -1937,16 +1916,15 @@
     const id = el.dataset.id;
     switch (name) {
       case 'cat':
-        // the same button opens and closes that shelf
-        if (ui.trayOpen && ui.buildCat === id && !(AIT.Render.tool && AIT.Render.tool.mode === 'sell')) {
-          ui.trayOpen = false;
-          AIT.Render.setTool(null);
-        } else {
-          ui.buildCat = id;
-          ui.trayOpen = true;
-          ui.winOpen = false;
-          if (AIT.Render.tool && AIT.Render.tool.mode === 'sell') AIT.Render.setTool(null);
-        }
+        ui.buildCat = id;
+        ui.trayOpen = true;
+        ui.winOpen = false;
+        if (AIT.Render.tool && (AIT.Render.tool.mode === 'sell' || D.ITEMS[AIT.Render.tool.type].cat !== id)) AIT.Render.setTool(null);
+        break;
+      case 'build':
+        ui.trayOpen = !ui.trayOpen || !!(AIT.Render.tool && AIT.Render.tool.mode === 'sell');
+        ui.winOpen = false;
+        if (!ui.trayOpen || (AIT.Render.tool && AIT.Render.tool.mode === 'sell')) AIT.Render.setTool(null);
         break;
       case 'close-tray':
         ui.trayOpen = false;
@@ -2276,7 +2254,6 @@
         renderNotif(G().s, ui.lastList || []);
       }
     });
-    $('feed').addEventListener('click', () => goTo('race:news'));
     $('notif-btn').addEventListener('click', () => {
       ui.notifOpen = !ui.notifOpen;
       renderNotif(G().s, ui.lastList || []);
@@ -2287,11 +2264,12 @@
     });
     const mute = $('mute-btn');
     paintMute();
-    mute.addEventListener('click', () => {
-      AIT.Sound.toggle();
-      paintMute();
-      sfx('tick');
-    });
+    if (mute)
+      mute.addEventListener('click', () => {
+        AIT.Sound.toggle();
+        paintMute();
+        sfx('tick');
+      });
     window.addEventListener('pointerdown', () => AIT.Sound.unlock(), { once: true });
     $('menu-btn').addEventListener('click', () => {
       ui.confirm = null;

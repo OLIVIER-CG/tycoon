@@ -39,22 +39,24 @@
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!Sim.canPlace(s, type, x, y, occ)) return true;
     return false;
   };
-  const noRoom = ' No free floor? Sell a GPU with the tag tool in the toolbar, then add the AC.';
+  const noRoom = ' No free floor? Press Sell on the left and tap a GPU, then add the AC.';
+  // the Build button, then the shelf's tab, then the item: each lights up only until it's done
+  const shelf = (cat, ...items) => ['#tools [data-act="build"]:not(.on)', `#dock .dock-cat[data-cat="${cat}"]:not(.on)`, ...items.map((i) => `#dock [data-item="${i}"]`)];
 
   const ACTS = {
-    garage: { n: 1, title: 'The garage', quote: 'One gaming PC and a lot of fog. Let’s turn this into a lab.' },
-    money: { n: 2, title: 'First believers', quote: 'A working model means investors will take your call.' },
-    move: { n: 3, title: 'Moving out', quote: 'A garage can’t train anything bigger. The Mission can.' },
-    small: { n: 4, title: 'A real model', quote: 'Now train something people will actually pay for.' },
+    garage: { n: 1, title: 'The garage' },
+    money: { n: 2, title: 'First believers' },
+    move: { n: 3, title: 'Moving out' },
+    small: { n: 4, title: 'A real model' },
   };
 
   const TUTORIAL = [
     {
       id: 'rigs', act: 'garage',
       title: 'Build 3 more gaming rigs',
-      how: 'Open Compute in the build toolbar on the left, pick Gaming Rig, then tap empty floor. Drag to place a row.',
+      how: 'Press Build on the left, pick Gaming Rig, then tap empty floor. Drag to place a row.',
       go: 'build:compute',
-      highlight: ['#tools [data-cat="compute"]', '#dock [data-item="rig"]'],
+      highlight: shelf('compute', 'rig'),
       progress: (s) => [Math.min(3, count(s, 'rig') - 1), 3],
       done: (s) => count(s, 'rig') >= 4 || s.officeLevel > 0,
     },
@@ -104,7 +106,7 @@
     {
       id: 'move', act: 'move',
       title: 'Move to the Mission',
-      how: 'Open Real estate at the bottom of the build toolbar and move into the Victorian flat: more power, and room for workstations.',
+      how: 'Press Real estate on the left and move into the Victorian flat: more power, and room for workstations.',
       go: 'hq:office',
       highlight: ['#tools [data-go="hq:office"]', '[data-key="move"]'],
       progress: (s) => (s.officeLevel ? null : [Math.min(s.cash, D.OFFICES[1].moveCost), D.OFFICES[1].moveCost, s.cash >= D.OFFICES[1].moveCost ? 'you can afford it' : `${money(s.cash)} of ${money(D.OFFICES[1].moveCost)}`]),
@@ -115,9 +117,9 @@
       title: (s) => `Get a Small run under ${smallTarget(s)} days`,
       start: (s, v, st) => (st.smallTarget = s.cash >= 380e3 ? 120 : 180),
       // while the GPUs are throttled by heat, more GPUs won't help: point at cooling instead
-      how: (s, v) => (v.heat > v.cooling ? `Your GPUs are overheating and run at ${Math.round(v.thermal * 100)}% speed: ${kw(v.heat)} of heat, ${kw(v.cooling)} of cooling. More GPUs won't help until you add AC units from the Cooling shelf.${roomFor(s, 'ac') ? '' : noRoom}` : 'A Small model needs 6,000 PF-days. Fill the flat with 4-GPU workstations until it fits. Keep about $60k for its training data.'),
+      how: (s, v) => (v.heat > v.cooling ? `Your GPUs are overheating and run at ${Math.round(v.thermal * 100)}% speed: ${kw(v.heat)} of heat, ${kw(v.cooling)} of cooling. More GPUs won't help until you add AC units: Build › Cooling.${roomFor(s, 'ac') ? '' : noRoom}` : 'A Small model needs 6,000 PF-days. Fill the flat with 4-GPU workstations until it fits. Keep about $60k for its training data.'),
       go: (s, v) => (v.heat > v.cooling ? 'build:cooling' : 'build:compute'),
-      highlight: (s, v) => (v.heat > v.cooling ? ['#tools [data-cat="cooling"]', '[data-coach="heat"]', '#dock [data-item="ac"]'] : ['#tools [data-cat="compute"]', '#dock [data-item="workstation"]']),
+      highlight: (s, v) => (v.heat > v.cooling ? shelf('cooling', 'ac') : shelf('compute', 'workstation')),
       progress: (s, v) => {
         const d = smallDays(s, v);
         return [Math.min(1, smallTarget(s) / d), 1, d > 3650 ? 'Small: over 10 years' : `Small: ${d.toLocaleString('en-US')} days`];
@@ -129,7 +131,7 @@
       title: 'Keep it cool',
       how: (s) => 'GPUs turn power into heat. Add AC units until heat is below cooling. It doesn’t matter where they stand.' + (roomFor(s, 'ac') ? '' : noRoom),
       go: 'build:cooling',
-      highlight: ['#tools [data-cat="cooling"]', '[data-coach="heat"]', '#dock [data-item="ac"]'],
+      highlight: shelf('cooling', 'ac'),
       when: (s, v) => v.heat > v.cooling, // only when it is needed
       progress: (s, v) => [Math.min(v.cooling, v.heat), v.heat, `${kw(v.heat)} heat · ${kw(v.cooling)} cooling`],
       done: (s, v) => v.heat <= v.cooling,
@@ -164,9 +166,9 @@
       title: 'Hire a researcher',
       // a researcher costs $7-19k a month: only once the lab can carry it for most of a year
       when: (s, v) => v.profitMonth >= 15000 || s.cash >= 9 * Math.max(15000, 15000 - v.profitMonth),
-      how: (s) => (seats(s) > s.staff.length ? 'Revenue is growing. Open Team › Hiring and hire a researcher: they earn research points every day.' : 'Everyone needs a desk. Build a standing desk from the Office shelf, then hire in Team › Hiring.'),
+      how: (s) => (seats(s) > s.staff.length ? 'Revenue is growing. Open Team › Hiring and hire a researcher: they earn research points every day.' : 'Everyone needs a desk. Build a standing desk (Build › Office), then hire in Team › Hiring.'),
       go: (s) => (seats(s) > s.staff.length ? 'team:hire' : 'build:office'),
-      highlight: (s) => (seats(s) > s.staff.length ? ['#rail [data-screen="team"]', '[data-act="hire"]'] : ['#tools [data-cat="office"]', '#dock [data-item="desk"]']),
+      highlight: (s) => (seats(s) > s.staff.length ? ['#rail [data-screen="team"]', '[data-act="hire"]'] : shelf('office', 'desk')),
       done: (s) => s.staff.length >= 2,
     },
   ];
@@ -185,9 +187,9 @@
     {
       id: 'overheat', urgent: true,
       when: (s, v) => v.thermal < 0.97,
-      lines: (s, v) => [`It's getting hot in here. Your GPUs make ${kw(v.heat)} of heat and you can only remove ${kw(v.cooling)}, so everything runs at ${Math.round(v.thermal * 100)}% speed. Add fans or AC units from the Cooling shelf in the build toolbar.`],
+      lines: (s, v) => [`It's getting hot in here. Your GPUs make ${kw(v.heat)} of heat and you can only remove ${kw(v.cooling)}, so everything runs at ${Math.round(v.thermal * 100)}% speed. Add fans or AC units: Build › Cooling.`],
       go: 'build:cooling',
-      highlight: ['[data-coach="heat"]', '#tools [data-cat="cooling"]'],
+      highlight: shelf('cooling'),
     },
     {
       id: 'cut_costs', urgent: true,
@@ -240,13 +242,13 @@
     {
       id: 'desks',
       when: (s, v) => s.staff.length >= 2 && v.seats <= s.staff.length && s.cash > 50000,
-      lines: ["Every desk is taken, so you can't hire anyone else. Standing desks are cheap. Find them on the Office shelf in the build toolbar."],
+      lines: ["Every desk is taken, so you can't hire anyone else. Standing desks are cheap: Build › Office."],
       go: 'build:office',
     },
     {
       id: 'loft',
       when: (s) => s.officeLevel === 0 && s.models.length > 0 && s.cash > 30000,
-      lines: ["The garage is nearly out of power. The Victorian flat in the Mission has three times the power and room for 4-GPU workstations. Open Real estate from the build toolbar on the left."],
+      lines: ["The garage is nearly out of power. The Victorian flat in the Mission has three times the power and room for 4-GPU workstations. Press Real estate on the left."],
       go: 'build',
     },
     {
@@ -255,7 +257,7 @@
         const team = s.staff.filter((p) => !p.founder);
         return team.length >= 2 && team.reduce((a, p) => a + p.morale, 0) / team.length < 45;
       },
-      lines: ['Your team is unhappy. Low morale slows work, and people quit below 25%. A pour-over bar, bean bags, a pinball machine or an office dog near their desks helps, and so does hype. They are on the Comfort shelf.'],
+      lines: ['Your team is unhappy. Low morale slows work, and people quit below 25%. A pour-over bar, bean bags, a pinball machine or an office dog near their desks helps, and so does hype. They are in Build › Comfort.'],
       go: 'build:comfort',
     },
     {
@@ -448,7 +450,7 @@
     const key = list.join(',');
     if (key === m.hlKey) return;
     m.hlKey = key;
-    m.style.textContent = list.length ? `${key} { outline: 3px solid var(--accent) !important; outline-offset: -3px; animation: coach 1.1s ease-in-out infinite; }` : '';
+    m.style.textContent = list.length ? `${key} { outline: 3px solid var(--accent) !important; outline-offset: -3px; animation: coach 1.8s ease-in-out infinite; }` : '';
   }
 
   function open(s, v, kind, def) {
@@ -541,7 +543,6 @@
     const key = [st.step, m.flashAt ? 1 : 0, m.cardMin ? 1 : 0, rows].join('|');
     if (key !== m.cardKey) {
       card.innerHTML = `<div class="obj-head"><span class="obj-face">${FACE}</span><div class="grow"><div class="eyebrow">Checklist · part ${act.n} of 4</div><div class="obj-act">${esc(act.title)}</div></div><button class="obj-min" data-m="obj-min" aria-label="${m.cardMin ? 'Expand' : 'Collapse'} checklist" aria-expanded="${!m.cardMin}">${m.cardMin ? '+' : '–'}</button></div>
-        ${m.cardMin ? '' : `<p class="obj-quote">“${esc(act.quote)}”</p>`}
         <ol class="obj-list">${rows}</ol>
         ${m.cardMin ? '' : '<button class="obj-link obj-skipall" data-m="skip">Skip the tutorial</button>'}`;
       m.cardKey = key;

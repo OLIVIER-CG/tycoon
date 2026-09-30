@@ -58,19 +58,28 @@ and rent hikes all show up.
 
 The game looks and plays like a PC tycoon game. It opens on a **title screen**
 (Continue, New game, Load game, Options, Credits) over your office. In the
-game the office fills the screen and the chrome sits on top of it:
+game the office fills the screen and the chrome sits on top of it. The
+chrome is kept quiet on purpose: dark and flat, with orange only for what is
+selected or what to press next, and red or amber only when something is
+wrong. Anything that isn't needed every minute lives in a window or under the
+bell.
 
 - **Top left:** the menu, the date, pause and three speeds, then a round
   button for each window: Team, Research, Models, Market, Money and the Race.
   A dot means something there needs you, a yellow dot means it is new.
-- **Left:** the build toolbar. Each category (compute, cooling, power,
-  office, comfort) opens a shelf of item cards along the bottom with power,
-  heat and desk meters; there is also a sell tool and Real estate.
-- **Bottom:** people and morale, hype, subscribers, compute, research points
-  and your OmniBench score on the left; revenue, profit, valuation and cash
-  on the right; the orange tab in the middle opens your company.
-- **Over the office:** a news feed, the next milestone with the most useful
-  next step, warnings as a banner, and a bell with everything that needs you.
+- **Top right:** the bell (everything that needs you, and the news) and
+  Feedback.
+- **Left:** Build, Sell and Real estate. Build opens a shelf along the bottom
+  with a tab per category (compute, cooling, power, office, comfort), item
+  cards, and power, heat and desk meters.
+- **Bottom:** five numbers. People, subscribers and usable compute on the
+  left; monthly profit and cash on the right. They turn amber or red only
+  when something needs you (low morale, overheating, a loss). Hover for
+  details, click to open the window behind them. The company button in the
+  middle opens your headquarters.
+- **Over the office:** the next milestone in two lines (hover for a hint),
+  and a banner only for real trouble. Toasts stack at most two, and several
+  achievements at once share one toast.
 
 **Windows** open in the middle with a slate title bar, orange tabs, a `?`
 that explains the window and four key numbers along the bottom:
@@ -128,7 +137,10 @@ machine, Sourdough the office dog, a whiteboard or the servers.
 Every finished model gets a launch reveal: the score counts up, you see where
 it lands on the leaderboard, and fictional users post about it. Big moments set
 off confetti and a cheer. Rival releases come with press lines, and small
-synthesized sound effects can be muted from the top bar.
+synthesized sound effects can be turned off in Options. The office itself is
+drawn calm too: rig screens and server lights glow softly instead of
+flashing, people speak up now and then rather than all at once, and a few
+walk around at a time.
 
 **Clear effects.** Every person in Team shows what they add (RP a day,
 training speed, users per GPU, market share, scandal risk) and what that means

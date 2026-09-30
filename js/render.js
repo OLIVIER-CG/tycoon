@@ -139,7 +139,7 @@
         const s = margin + ((1 - margin * 2) * (c + 0.5)) / cols;
         const z = pr.h * (0.15 + (0.75 * (r + 0.5)) / rows);
         const [x, y] = face === 'L' ? onL(cx, cy, pr, s, z) : onR(cx, cy, pr, s, z);
-        const on = Math.sin(t * (3 + ((r * 7 + c * 13 + seed) % 5)) + r * 1.7 + c * 2.3 + seed) > -0.2;
+        const on = Math.sin(t * (0.5 + ((r * 7 + c * 13 + seed) % 5) * 0.15) + r * 1.7 + c * 2.3 + seed) > -0.6;
         dot(x, y, 1.1, on ? LED_ON[mode] : '#2c333c');
       }
     }
@@ -358,9 +358,9 @@
     },
     rig(cx, cy, it, t, info) {
       const pr = prism(cx, cy, 0, 0, 0.36, 0.52, 30, 0, '#23272f');
-      const hue = (t * 40 + it.id * 50) % 360;
+      // a calm, steady screen: one hue, a touch lighter or darker per rig
       const a = onR(cx, cy, pr, 0.15, 6), b = onR(cx, cy, pr, 0.85, 6), c = onR(cx, cy, pr, 0.85, 26), d = onR(cx, cy, pr, 0.15, 26);
-      poly([a, b, c, d], `hsla(${hue},85%,60%,${info.mode === 'idle' ? 0.35 : 0.75})`);
+      poly([a, b, c, d], `hsla(193,42%,${50 + (it.id % 3) * 5}%,${info.mode === 'idle' ? 0.3 : 0.7})`);
       ledRows(cx, cy, pr, 1, 2, t, it.id, info.mode);
     },
     workstation(cx, cy, it, t, info) {
@@ -402,10 +402,10 @@
       const chip = prism(cx, cy, 0, 0, 0.62, 0.62, 5, 26, '#39414c');
       const a = onTop(cx, cy, chip, 0, 0), b = onTop(cx, cy, chip, 1, 0), c = onTop(cx, cy, chip, 1, 1), d = onTop(cx, cy, chip, 0, 1);
       const g = ctx.createLinearGradient(d[0], d[1], b[0], b[1]);
-      const sh = (t * 30 + it.id * 40) % 360;
-      g.addColorStop(0, `hsl(${sh},60%,55%)`);
-      g.addColorStop(0.5, `hsl(${(sh + 60) % 360},70%,65%)`);
-      g.addColorStop(1, `hsl(${(sh + 120) % 360},60%,50%)`);
+      const sh = 196 + (it.id % 4) * 5;
+      g.addColorStop(0, `hsl(${sh},35%,48%)`);
+      g.addColorStop(0.5, `hsl(${sh + 12},40%,60%)`);
+      g.addColorStop(1, `hsl(${sh},35%,44%)`);
       poly([a, b, c, d], g);
       ctx.strokeStyle = 'rgba(20,24,30,0.35)';
       for (let i = 1; i < 4; i++) {
@@ -762,10 +762,10 @@
       poly([pf(0.02, 0.02), pf(0.2, 0.02), pf(0.5, 0.98), pf(0.32, 0.98)], 'rgba(255,255,255,0.12)');
       const bb = prism(cx, cy, 0, -0.37, 0.4, 0.1, 25, zk, cab);
       const g = [onL(cx, cy, bb, 0.1, 4), onL(cx, cy, bb, 0.9, 4), onL(cx, cy, bb, 0.9, 22), onL(cx, cy, bb, 0.1, 22)];
-      const hue = (t * 50 + it.id * 40) % 360;
+      const hue = 24 + (it.id % 3) * 12;
       const lg = ctx.createLinearGradient(g[3][0], g[3][1], g[1][0], g[1][1]);
-      lg.addColorStop(0, `hsl(${hue},80%,60%)`);
-      lg.addColorStop(1, `hsl(${(hue + 80) % 360},80%,55%)`);
+      lg.addColorStop(0, `hsl(${hue},55%,58%)`);
+      lg.addColorStop(1, `hsl(${hue + 20},50%,50%)`);
       poly(g, lg);
       poly([onL(cx, cy, bb, 0.2, 5.5), onL(cx, cy, bb, 0.8, 5.5), onL(cx, cy, bb, 0.8, 9.5), onL(cx, cy, bb, 0.2, 9.5)], '#1a1410');
       for (let i = 0; i < 5; i++) {
@@ -860,7 +860,7 @@
       life.wantCelebrate = false;
       life.celebrateUntil = t + 2.4;
       spawnConfetti(N);
-      const people = s.staff.slice().sort(() => Math.random() - 0.5).slice(0, 2);
+      const people = s.staff.slice().sort(() => Math.random() - 0.5).slice(0, 1);
       people.forEach((p, i) => life.bubbles.push({ who: p.id, text: pickOne(quips().celebrate), until: t + 2.6 + i * 0.4 }));
     }
     // drop walkers whose desk or person is gone
@@ -885,7 +885,7 @@
         if (w.phase === 'out') {
           w.phase = 'hang';
           w.hang = 2.5 + Math.random() * 2.5;
-          life.bubbles.push({ who: w.id, text: w.say, until: t + 2.6 });
+          if (Math.random() < 0.35 && life.bubbles.length < 1) life.bubbles.push({ who: w.id, text: w.say, until: t + 2.6 });
         } else life.walkers.delete(w.id);
         continue;
       }
@@ -903,15 +903,15 @@
     // somebody gets up now and then
     life.nextWalk -= dt;
     const seated = desks.filter((d) => deskStaff.get(d.id) && !life.walkers.has(deskStaff.get(d.id).id));
-    if (life.nextWalk <= 0 && seated.length && life.walkers.size < Math.max(1, Math.floor(s.staff.length / 4))) {
+    if (life.nextWalk <= 0 && seated.length && life.walkers.size < Math.min(4, Math.max(1, Math.floor(s.staff.length / 8)))) {
       life.nextWalk = 3 + Math.random() * 5;
       const d = pickOne(seated);
       startWalk(s, N, d, deskStaff.get(d.id));
     }
     // and somebody says something
     life.nextQuip -= dt;
-    if (life.nextQuip <= 0 && seated.length && life.bubbles.length < 2) {
-      life.nextQuip = 5 + Math.random() * 5;
+    if (life.nextQuip <= 0 && seated.length && life.bubbles.length < 1) {
+      life.nextQuip = 12 + Math.random() * 10;
       const d = pickOne(seated);
       life.bubbles.push({ who: deskStaff.get(d.id).id, text: chooseQuip(s, v, deskStaff.get(d.id)), until: t + 3.2 });
     }
@@ -1016,7 +1016,7 @@
 
   const CONFETTI = ['#ef5f24', '#ffb000', '#2e9b67', '#4a63d8', '#d0469a', '#3fc6ff'];
   function spawnConfetti(N) {
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 45; i++) {
       const [x, y] = P(0, 0, Math.random() * N, Math.random() * N, 0);
       life.confetti.push({ x, y: y - 120 - Math.random() * 80, vx: (Math.random() - 0.5) * 40, vy: Math.random() * 30, r: Math.random() * 6, vr: (Math.random() - 0.5) * 10, c: pickOne(CONFETTI), life: 0, max: 2.2 + Math.random() });
     }
@@ -2055,7 +2055,7 @@
         const L = e.L, a1 = L + 0.5 * WU, a2 = L + 0.36 * L - 0.7 * WU;
         rect(a1, 42, a2 - a1, 34, '#4f7a45');
         const g = ['#5f8f4f', '#6fa35b', '#86b86b', '#4a7440', '#9cc77a'];
-        for (let i = 0; i < 90; i++) {
+        for (let i = 0; i < 45; i++) {
           const a = a1 + 2 + nh(i + 3000) * (a2 - a1 - 4), b = 44 + nh(i + 3100) * 30;
           dot(a, b, 1.6 + nh(i + 3200) * 2.2, g[i % 5]);
         }
@@ -2336,7 +2336,7 @@
     g.beginPath();
     g.arc(11 * dpr, 11 * dpr, 1.1 * dpr, 0, Math.PI * 2);
     g.fill();
-    bgPattern = ctx.createPattern(c, 'repeat');
+    bgPattern = /^(transparent|none|rgba\([^)]*,\s*0\))$/.test(stageGrid) ? null : ctx.createPattern(c, 'repeat');
   }
 
   // ---------- public API ----------
@@ -2425,8 +2425,10 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = stageBg;
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = bgPattern;
-    ctx.fillRect(0, 0, W, H);
+    if (bgPattern) {
+      ctx.fillStyle = bgPattern;
+      ctx.fillRect(0, 0, W, H);
+    }
 
     const fogWant = fogTarget(s, office, t);
     fog.amt += (fogWant - fog.amt) * Math.min(1, Math.max(0, dt || 0) * 0.6);
