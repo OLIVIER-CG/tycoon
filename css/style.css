@@ -275,6 +275,8 @@ input[type='range'] { width: 100%; accent-color: var(--bridge); margin: 4px 0; }
   background: transparent; text-align: left; border-radius: 0;
 }
 .res:first-child { border-left: 0; }
+/* live numbers get rewritten while you press; keep the button itself as the click target */
+.res > *, .rail-btn > *, .icon-btn > *, .dock-item > * { pointer-events: none; }
 .res:hover { background: var(--paper-2); }
 .res .k { font: 600 10px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
 .res .v { font: 600 15px/1.25 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }

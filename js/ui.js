@@ -84,9 +84,15 @@
   const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isPhone = () => window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
   const G = () => AIT.game;
+  // Compare with the markup we last wrote, not el.innerHTML: the browser
+  // re-serializes it (<path/> becomes <path></path>), so that check always
+  // failed, rebuilt the rail every frame and swallowed clicks mid-press.
+  const written = new WeakMap();
   const set = (id, html) => {
     const el = $(id);
-    if (el && el.innerHTML !== html) el.innerHTML = html;
+    if (!el || written.get(el) === html) return;
+    el.innerHTML = html;
+    written.set(el, html);
   };
 
   // ---------- small building blocks ----------
@@ -216,6 +222,22 @@
       else if (!s.training) {
         const run = Sim.bestNextRun(s, v);
         if (run) add(v.idleDays > 20 ? 'warn' : 'info', `Train ${an(run.size.name)} ${run.size.name} model: about ${Math.round(run.exp)} (yours ${fm.cap.toFixed(0)}), ${run.days} days, ${money(run.cost)} of data.`, 'models:run', 'Train');
+        else {
+          // nothing better finishes within a year: say what is in the way
+          const size = D.MODEL_SIZES.find((m) => !m.fixedCost && m.base > fm.cap + 2);
+          if (size && size.tech && !s.techs[size.tech]) add('info', `${size.name} models need ${D.TECH_BY_ID[size.tech].name} from R&D.`, 'research', 'R&D');
+          else if (size) {
+            const days = Math.round(size.pfdays / Math.max(0.01, trainRate(s, v)));
+            const nextOffice = D.OFFICES[s.officeLevel + 1];
+            const faster = nextOffice && Object.values(D.ITEMS).find((d) => d.pf && d.minOffice === s.officeLevel + 1);
+            add(
+              v.idleDays > 20 ? 'warn' : 'info',
+              `${an(size.name) === 'an' ? 'An' : 'A'} ${size.name} model would take ${days > 3650 ? 'over ten years' : days.toLocaleString('en-US') + ' days'} on your compute. ${faster ? `Add GPUs, or move to ${nextOffice.place} for ${faster.name}s.` : 'Add GPUs to train it within a year.'}`,
+              faster ? 'build' : 'build:compute',
+              faster ? 'Build' : 'GPUs',
+            );
+          }
+        }
       }
     }
     const t = cheapestTech(s);
@@ -224,7 +246,9 @@
     const fv = Sim.fundingView(s, v);
     if (fv.canPitch && fv.fit >= 1 && Progress.has(s, 'tab:finance')) add('good', `Investors are keen on your ${fv.round.name}. Raising is optional.`, 'finance', 'Pitch');
     const next = D.OFFICES[s.officeLevel + 1];
-    if (next && Progress.has(s, 'office:next') && s.cash >= next.moveCost * 1.5 && v.power > v.powerCap * 0.6) add('info', `You can afford the ${next.name} in ${next.place}.`, 'build', 'Look');
+    // suggest a move when the building is filling up, or when it can't train anything better
+    const outgrown = v.power > v.powerCap * 0.6 || (fm && !s.training && !Sim.bestNextRun(s, v));
+    if (next && Progress.has(s, 'office:next') && s.cash >= next.moveCost * 1.5 && outgrown) add('info', `You can afford the ${next.name} in ${next.place}.`, 'build', 'Look');
     const pd = fm && D.PRODUCTS.find((p) => s.techs[p.tech] && !s.products[p.id].live && s.cash > p.launch * 2);
     if (pd) add('info', `${pd.name} is ready to launch.`, 'market', 'Market');
     if (fm && Progress.has(s, 'tab:market') && s.subs > 200) {

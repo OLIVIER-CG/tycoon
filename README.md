@@ -141,7 +141,7 @@ it. After that she only speaks up with about 20 hand-written tips, each once
 per game and only when it applies (overheating, running out of runway,
 unused research points, each new office and so on). Non-urgent tips wait 20
 in-game days after her last message, plus 45 seconds of real time at 1×
-(shorter at higher speeds, never under 12 seconds), so fast play doesn't skip
+(shorter at higher speeds, never under 8 seconds), so fast play doesn't skip
 them. You can switch
 tips off or replay the tutorial from the Menu.
 

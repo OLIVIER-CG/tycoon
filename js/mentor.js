@@ -7,7 +7,7 @@
 
   const NAME = 'Mira Castell';
   const TIP_COOLDOWN_MS = 45000; // real time between non-urgent tips at 1×, shorter at higher speeds
-  const TIP_COOLDOWN_MIN_MS = 12000;
+  const TIP_COOLDOWN_MIN_MS = 8000;
   const TIP_COOLDOWN_DAYS = 20; // and in-game days
   const SPEED_DAYS = [0, 1, 3, 8]; // days per second at each speed, as in main.js
   const TYPE_CPS = 70; // typewriter speed, characters per second
