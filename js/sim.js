@@ -5,28 +5,128 @@
   const D = AIT.DATA;
 
   const DAY_MS = 86400000;
+
+  // Seedable randomness (mulberry32), so tests and the daily challenge can
+  // replay the same run. Visual randomness elsewhere keeps using Math.random.
+  let rngState = (Math.random() * 4294967296) >>> 0;
+  function random() {
+    rngState = (rngState + 0x6d2b79f5) >>> 0;
+    let t = rngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  const seed = (n) => (rngState = n >>> 0);
+
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const rand = (a, b) => a + Math.random() * (b - a);
+  const rand = (a, b) => a + random() * (b - a);
   const randi = (a, b) => Math.floor(rand(a, b + 1));
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const pick = (arr) => arr[Math.floor(random() * arr.length)];
   const sat = (x, k) => 1 - Math.exp(-x / k);
+  const money = (n) => (AIT.fmt ? AIT.fmt.money(n) : '$' + Math.round(n));
   const round1 = (x) => Math.round(x * 10) / 10;
-  const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.4;
+  const gauss = () => (random() + random() + random() - 1.5) * 1.4;
   const RIVAL_BY_ID = Object.fromEntries(D.RIVALS.map((r) => [r.id, r]));
 
   const hooks = { toast: null, month: null, over: null };
+  const VERSION = 3;
+
+  // ---------- footprints and seats ----------
+  const sizeOf = (it) => (it.legacy ? 1 : D.ITEMS[it.type].size || 1);
+  // Items bought before 2x2 hardware existed keep their old, quarter-size stats.
+  const stat = (it, key) => (D.ITEMS[it.type][key] || 0) * (it.legacy ? 0.25 : 1);
+  const covers = (it, x, y) => {
+    const n = sizeOf(it);
+    return x >= it.x && y >= it.y && x < it.x + n && y < it.y + n;
+  };
+  const itemAt = (s, x, y) => s.items.find((it) => covers(it, x, y)) || null;
+  function occupied(s) {
+    const set = new Set();
+    for (const it of s.items) {
+      const n = sizeOf(it);
+      for (let dx = 0; dx < n; dx++) for (let dy = 0; dy < n; dy++) set.add(it.x + dx + ',' + (it.y + dy));
+    }
+    return set;
+  }
+  // Tiles between two footprints: 1 means next to each other, 0 means overlapping.
+  function gap(a, b) {
+    const na = sizeOf(a), nb = sizeOf(b);
+    const dx = Math.max(0, b.x - (a.x + na - 1), a.x - (b.x + nb - 1));
+    const dy = Math.max(0, b.y - (a.y + na - 1), a.y - (b.y + nb - 1));
+    return Math.max(dx, dy);
+  }
+  function canPlace(s, type, x, y, occ) {
+    const N = D.OFFICES[s.officeLevel].size;
+    const n = D.ITEMS[type].size || 1;
+    if (x < 0 || y < 0 || x + n > N || y + n > N) return 'Outside the office';
+    occ = occ || occupied(s);
+    for (let dx = 0; dx < n; dx++) for (let dy = 0; dy < n; dy++) if (occ.has(x + dx + ',' + (y + dy))) return 'That tile is taken';
+    return null;
+  }
+  // Staff sit at desks in hiring order.
+  function seating(s) {
+    const desks = s.items.filter((i) => D.ITEMS[i.type].seats).sort((a, b) => a.id - b.id);
+    const map = new Map();
+    s.staff.forEach((p, i) => {
+      if (desks[i]) map.set(p.id, desks[i]);
+    });
+    return map;
+  }
+  const fundingDefaults = () => ({ offers: [], cd: 0, walkaways: [], last: null, pitches: 0 });
+  const productDefaults = () => Object.fromEntries(D.PRODUCTS.map((p) => [p.id, { live: false, price: p.price, users: 0, share: 0, target: 0 }]));
+
+  function migrate(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    obj.v = obj.v || 1;
+    if (obj.v < 2) {
+      for (const it of obj.items || []) if ((D.ITEMS[it.type] || {}).size === 2) it.legacy = true;
+      obj.products = obj.products || productDefaults();
+      obj.mode = obj.mode || 'standard';
+      obj.difficulty = obj.difficulty || 'normal';
+      obj.playMs = obj.playMs || 0;
+      obj.v = 2;
+    }
+    if (obj.v < 3) {
+      // one term sheet at a time became several competing ones
+      const f = fundingDefaults();
+      f.cd = obj.roundCd || 0;
+      if (obj.offer) f.offers.push(Object.assign({ oid: 'o1', investor: 'Your investors', kind: 'Investors', type: 'vc', round: obj.offer.id, perk: null, pushed: true }, obj.offer));
+      obj.funding = f;
+      delete obj.offer;
+      delete obj.roundCd;
+      obj.v = 3;
+    }
+    return obj;
+  }
 
   const dateOf = (day) => new Date(D.START_DATE + day * DAY_MS);
   const monthKey = (day) => {
     const d = dateOf(day);
     return d.getUTCFullYear() * 12 + d.getUTCMonth();
   };
-  const emptyMonth = () => ({ rev: 0, crev: 0, salaries: 0, rent: 0, power: 0, marketing: 0, capex: 0, data: 0, other: 0, funding: 0 });
+  const emptyMonth = () => ({ rev: 0, crev: 0, prev: 0, salaries: 0, rent: 0, power: 0, marketing: 0, capex: 0, data: 0, other: 0, funding: 0 });
 
   function news(s, text, kind = 'info', toast = false) {
     s.news.unshift({ day: s.day, text, kind });
     if (s.news.length > 80) s.news.length = 80;
     if (toast && hooks.toast) hooks.toast(text, kind);
+  }
+
+  // a journal of the player's decisions, used for run reports
+  function log(s, a, extra = {}) {
+    if (!s.log) s.log = [];
+    const last = s.log[s.log.length - 1];
+    if (last && last.a === a && last.d === s.day && a === 'buy' && last.t === extra.t) {
+      last.n++;
+      return;
+    }
+    if (last && last.a === a && (a === 'price' || (a === 'pprice' && last.id === extra.id)) && s.day - last.d < 3) {
+      last.to = extra.to;
+      last.d = s.day;
+      return;
+    }
+    s.log.push({ d: s.day, a, ...extra });
+    if (s.log.length > 600) s.log.splice(0, s.log.length - 600);
   }
 
   function addItem(s, type, x, y) {
@@ -36,12 +136,22 @@
   }
 
   function newGame(opts = {}) {
+    const mode = opts.mode || 'standard';
+    const difficulty = mode === 'daily' ? 'normal' : opts.difficulty || 'normal';
+    seed(opts.seed != null ? opts.seed : Math.random() * 4294967296);
     const s = {
-      v: 1,
+      v: VERSION,
+      mode,
+      difficulty,
+      seed: opts.seed != null ? opts.seed : null,
+      playMs: 0,
+      products: productDefaults(),
+      runId: 'run-' + Date.now().toString(36),
+      log: [],
       company: opts.company || 'Nimbus Labs',
       family: opts.family || 'Nova',
       day: 0,
-      cash: 75000,
+      cash: mode === 'sandbox' ? 10e6 : D.DIFFICULTY[difficulty].cash,
       equity: 1,
       officeLevel: 0,
       items: [],
@@ -72,8 +182,7 @@
       cloud: null,
       campaignCd: {},
       rounds: [],
-      roundCd: 0,
-      offer: null,
+      funding: fundingDefaults(),
       history: [],
       month: emptyMonth(),
       monthKey: monthKey(0),
@@ -136,6 +245,7 @@
   }
 
   const rivalAppeal = (s) => 1 + Math.min(0.8, (s.day / 365) * 0.1);
+  const rivalBoost = (s, r) => (r.boost && r.boost.until > s.day ? r.boost.mult : 1);
 
   // Wages climb over time as the talent war heats up.
   function salaryFor(role, skill, sentiment = 1, day = 0) {
@@ -159,58 +269,95 @@
 
   function derive(s) {
     const office = D.OFFICES[s.officeLevel];
-    const v = { office, pf: 0, power: 0, powerCap: office.power, cooling: office.cooling, heat: 0, seats: 0, decor: 0, boards: 0, counts: {}, hwValue: 0 };
+    const v = { office, pf: 0, power: 0, powerCap: office.power, cooling: 0, heat: 0, seats: 0, decor: 0, boards: 0, counts: {}, hwValue: 0, computeItems: 0, hotItems: 0 };
+    const sources = [], coolers = [], boards = [], comforts = [];
     for (const it of s.items) {
       const d = D.ITEMS[it.type];
       v.counts[it.type] = (v.counts[it.type] || 0) + 1;
-      v.pf += d.pf || 0;
-      v.power += d.power || 0;
-      v.powerCap += d.powerCap || 0;
-      v.cooling += d.cooling || 0;
-      if (!d.cooling) v.heat += d.power || 0;
+      const pf = stat(it, 'pf'), power = stat(it, 'power');
+      v.pf += pf;
+      v.power += power;
+      v.powerCap += stat(it, 'powerCap');
       v.seats += d.seats || 0;
       v.decor += d.decor || 0;
-      if (d.rpBonus) v.boards++;
-      v.hwValue += d.cost * 0.5;
+      v.hwValue += stat(it, 'cost') * 0.5;
+      if (pf) {
+        sources.push({ it, pf, heat: power });
+      }
+      if (d.cooling) coolers.push({ it, cap: stat(it, 'cooling') });
+      if (d.rpBonus) boards.push(it);
+      if (d.decor) comforts.push(it);
     }
-    v.cooling *= effectMult(s, 'cooling');
+    v.boards = boards.length;
+    v.computeItems = sources.length;
     v.powerFactor = v.power > v.powerCap ? v.powerCap / v.power : 1;
-    const heatNow = v.heat * v.powerFactor;
-    v.thermal = heatNow > v.cooling ? Math.max(0.3, v.cooling / heatNow) : 1;
+
+    // Heat is simple: every GPU adds heat, every cooler (and the building
+    // itself) removes some. If heat beats cooling, all GPUs slow down together.
+    let totalHeat = 0;
+    for (const src of sources) totalHeat += src.heat * v.powerFactor;
+    const coolCap = (office.cooling + coolers.reduce((a, c) => a + c.cap, 0)) * effectMult(s, 'cooling');
+    v.heat = totalHeat;
+    v.cooling = coolCap;
+    v.thermal = totalHeat > coolCap ? Math.max(0.3, coolCap / totalHeat) : 1;
+    v.itemHeat = new Map();
+    for (const src of sources) v.itemHeat.set(src.it.id, v.thermal);
+    if (v.thermal < 1) v.hotItems = sources.length;
+    const pfCool = v.pf * v.thermal;
     v.cloudPF = s.cloud && s.cloud.until > s.day ? s.cloud.pf : 0;
     v.computeMult = effectMult(s, 'compute');
-    v.effPF = v.pf * v.powerFactor * v.thermal * v.computeMult + v.cloudPF;
+    v.effPF = pfCool * v.powerFactor * v.computeMult + v.cloudPF;
 
-    let R = 0, E = 0, G = 0, S = 0, rpStaff = 0, payroll = 0;
+    // Where people sit matters: whiteboards help nearby researchers and comfort
+    // items lift the mood of nearby desks.
+    const boardAt = (desk) => (desk ? Math.min(0.4, boards.filter((b) => gap(b, desk) <= 2).length * 0.08) : 0);
+    const comfortAt = (desk) => (desk ? Math.min(25, 4 * comforts.reduce((a, c) => a + (gap(c, desk) <= 3 ? D.ITEMS[c.type].decor : 0), 0)) : 0);
+    const seats = seating(s);
+    v.seatInfo = new Map();
     for (const p of s.staff) {
-      payroll += p.salary;
-      if (p.trainUntil > s.day) continue;
-      const prod = 0.7 + (0.5 * p.morale) / 100;
-      const k = p.skill * prod;
-      if (p.role === 'researcher') {
-        R += k;
-        rpStaff += Math.pow(p.skill, 1.25) * 0.3 * prod;
-      } else if (p.role === 'engineer') E += k;
-      else if (p.role === 'growth') G += k;
-      else S += k;
+      const desk = seats.get(p.id);
+      v.seatInfo.set(p.id, { desk, board: boardAt(desk), comfort: comfortAt(desk) });
     }
-    Object.assign(v, { R, E, G, S, payroll, staffCount: s.staff.length });
+    const taken = new Set([...seats.values()].map((d) => d.id));
+    const freeDesks = s.items.filter((i) => D.ITEMS[i.type].seats && !taken.has(i.id));
+    v.newHireSeat = { board: Math.max(0, ...freeDesks.map(boardAt)), comfort: Math.max(0, ...freeDesks.map(comfortAt)) };
+    v.boardAt = boardAt;
+    v.comfortAt = comfortAt;
+
+    const team = teamTotals(s.staff, s.day, v.seatInfo);
+    const payroll = s.staff.reduce((a, p) => a + p.salary, 0);
+    Object.assign(v, { R: team.R, E: team.E, G: team.G, S: team.S, payroll, staffCount: s.staff.length });
 
     const t = techTotals(s);
     v.tech = t;
-    v.trainMult = (1 + 0.6 * sat(E, 20)) * (1 + t.train);
-    v.inferEff = (1 + sat(E, 25)) * (1 + t.infer);
-    v.growthMult = 1 + sat(G, 15);
-    v.brand = 1 + 0.35 * sat(G, 20);
-    v.scandalMult = Math.exp(-S / 12) * t.safety;
-    v.researchQ = 1 + 0.08 * sat(R, 40);
-    v.boardBonus = Math.min(0.3, v.boards * 0.03);
-    v.rpMult = (1 + v.boardBonus) * (1 + 0.08 * Math.log10(1 + v.effPF));
-    v.rpStaff = rpStaff * v.rpMult;
+    const fx = teamEffects(team, t);
+    v.trainMult = fx.train;
+    v.inferEff = fx.infer;
+    v.growthMult = fx.growth;
+    v.brand = fx.brand;
+    v.scandalMult = fx.scandal;
+    v.researchQ = fx.quality;
+    const researchers = s.staff.filter((p) => p.role === 'researcher');
+    v.boardBonus = researchers.length ? researchers.reduce((a, p) => a + v.seatInfo.get(p.id).board, 0) / researchers.length : 0;
+    v.rpMult = 1 + 0.08 * Math.log10(1 + v.effPF);
+    v.rpStaff = team.rp * v.rpMult;
 
     const fm = flagship(s);
     v.flagship = fm;
-    v.serveNeed = fm ? (s.subs * fm.infer) / (2000 * v.inferEff) : 0;
+    v.products = {};
+    let prodNeed = 0, prodRevenue = 0;
+    for (const pd of D.PRODUCTS) {
+      const st = s.products[pd.id] || { users: 0, price: pd.price };
+      const live = !!(st.live && fm);
+      const need = live ? (st.users * fm.infer * pd.infer) / (2000 * v.inferEff) : 0;
+      const revenue = live ? st.users * st.price : 0;
+      prodNeed += need;
+      prodRevenue += revenue;
+      v.products[pd.id] = { live, users: st.users, price: st.price, revenue, need, target: st.target || 0, share: st.share || 0 };
+    }
+    v.chatNeed = fm ? (s.subs * fm.infer) / (2000 * v.inferEff) : 0;
+    v.serveNeed = v.chatNeed + prodNeed;
+    v.productRevenue = prodRevenue;
     v.contractPF = s.contracts.reduce((a, c) => a + c.pf, 0);
     v.need = v.serveNeed + v.contractPF;
     if (s.training) {
@@ -228,7 +375,7 @@
     v.arpu = fm ? s.price * fm.arpu : 0;
     v.subRevenue = s.subs * v.arpu;
     v.contractRevenue = s.contracts.reduce((a, c) => a + c.monthly, 0);
-    v.mrr = v.subRevenue + v.contractRevenue;
+    v.mrr = v.subRevenue + v.contractRevenue + v.productRevenue;
     v.powerCostDay = Math.min(v.power, v.powerCap) * 2.88 * effectMult(s, 'energy');
     v.burnMonth = v.payroll + office.rent + v.powerCostDay * 30;
     v.profitMonth = v.mrr - v.burnMonth;
@@ -237,7 +384,107 @@
     v.market = marketSize(s);
     v.valuation = valuation(s, v);
     v.netWorth = v.valuation * s.equity;
+    v.alignment = alignment(s, v);
+    v.idleDays = !s.training && s.models.length ? s.day - (s.flags.lastTrainEnd != null ? s.flags.lastTrainEnd : lastModelDay(s)) : 0;
     return v;
+  }
+
+  const lastModelDay = (s) => s.models.reduce((a, m) => Math.max(a, m.day), 0);
+
+  // Alignment: how much the world trusts what you are building. It decides the ending.
+  function alignment(s, v) {
+    const parts = {
+      base: 10,
+      research: (s.techs.rlhf ? 5 : 0) + (s.techs.constitutional ? 15 : 0) + (s.techs.interpretability ? 20 : 0),
+      team: Math.round(30 * sat(v.S, 20)),
+      choices: clamp(Math.round(s.flags.align || 0), -30, 30),
+      data: v.flagship && v.flagship.human ? 5 : 0,
+    };
+    parts.total = clamp(parts.base + parts.research + parts.team + parts.choices + parts.data, 0, 100);
+    parts.ending = parts.total >= 70 ? 'aligned' : parts.total >= 40 ? 'uneasy' : 'reckless';
+    return parts;
+  }
+  const align = (s, d) => (s.flags.align = clamp((s.flags.align || 0) + d, -30, 30));
+
+  // ---------- what the team adds ----------
+
+  function teamTotals(staff, day, seatInfo, newSeat) {
+    const t = { R: 0, E: 0, G: 0, S: 0, rp: 0 };
+    for (const p of staff) {
+      if (p.trainUntil > day) continue;
+      const prod = 0.7 + (0.5 * p.morale) / 100;
+      const k = p.skill * prod;
+      const seat = (seatInfo && seatInfo.get(p.id)) || newSeat || { board: 0 };
+      if (p.role === 'researcher') {
+        t.R += k;
+        t.rp += Math.pow(p.skill, 1.25) * 0.3 * prod * (1 + seat.board);
+      } else if (p.role === 'engineer') t.E += k;
+      else if (p.role === 'growth') t.G += k;
+      else t.S += k;
+    }
+    return t;
+  }
+
+  function teamEffects(team, tech) {
+    return {
+      train: (1 + 0.6 * sat(team.E, 20)) * (1 + tech.train),
+      infer: (1 + sat(team.E, 25)) * (1 + tech.infer),
+      growth: 1 + sat(team.G, 15),
+      brand: 1 + 0.35 * sat(team.G, 20),
+      scandal: Math.exp(-team.S / 12) * tech.safety,
+      quality: 1 + 0.08 * sat(team.R, 40),
+      rp: team.rp,
+    };
+  }
+
+  // What one person adds: pass { remove: staffId } for someone on the team,
+  // or { add: candidate } for someone you might hire.
+  function impact(s, v, change) {
+    const base = teamEffects(teamTotals(s.staff, s.day, v.seatInfo), v.tech);
+    let staff = s.staff;
+    if (change.remove) staff = staff.filter((p) => p.id !== change.remove);
+    if (change.add) staff = staff.concat([{ ...change.add, morale: 70, trainUntil: 0 }]);
+    const alt = teamEffects(teamTotals(staff, s.day, v.seatInfo, v.newHireSeat), v.tech);
+    const [a, b] = change.remove ? [base, alt] : [alt, base];
+    return {
+      rp: (a.rp - b.rp) * v.rpMult,
+      train: a.train / b.train - 1,
+      infer: a.infer / b.infer - 1,
+      brand: a.brand / b.brand - 1,
+      growth: a.growth / b.growth - 1,
+      scandal: 1 - a.scandal / b.scandal,
+      quality: a.quality / b.quality - 1,
+    };
+  }
+
+  // Where morale is heading, and why.
+  function moraleTarget(s, v, p) {
+    const team = s.staff.filter((q) => !q.founder);
+    const comfortOf = (q) => (v.seatInfo.get(q.id) || {}).comfort || 0;
+    const parts = {
+      base: 45,
+      comfort: p ? comfortOf(p) : team.length ? team.reduce((a, q) => a + comfortOf(q), 0) / team.length : 0,
+      hype: Math.min(8, s.hype / 10),
+      broke: s.cash < 0 ? -20 : 0,
+    };
+    parts.total = parts.base + parts.comfort + parts.hype + parts.broke;
+    return parts;
+  }
+
+  // The factors behind your market share, each compared with the leading rival.
+  function shareFactors(s, v) {
+    const fm = v.flagship;
+    if (!fm) return null;
+    const top = s.rivals.filter((r) => !RIVAL_BY_ID[r.id].open).reduce((a, r) => (r.cap > a.cap ? r : a));
+    return {
+      rival: RIVAL_BY_ID[top.id].name,
+      model: { you: fm.cap, them: top.cap, mult: Math.pow(fm.cap / top.cap, 3.2) },
+      features: { you: fm.appeal, them: rivalAppeal(s), mult: fm.appeal / rivalAppeal(s) },
+      hype: { you: s.hype, them: top.hype, mult: (0.6 + (0.8 * s.hype) / 100) / (0.6 + (0.8 * top.hype) / 100) },
+      price: { you: s.price, them: 20, mult: Math.pow(20 / s.price, 1.1) },
+      uptime: { you: v.service, mult: Math.pow(v.service, 1.5) },
+      growth: { mult: v.brand },
+    };
   }
 
   function valuation(s, v) {
@@ -251,6 +498,37 @@
     return revPart + capPart + team + v.hwValue;
   }
 
+  // ---------- funding ----------
+
+  // How keen investors are on your next round, and why.
+  function fundingView(s, v) {
+    const f = s.funding;
+    const round = D.ROUNDS[s.rounds.length] || null;
+    const net = v.burnMonth - v.mrr;
+    const runway = net <= 0 ? Infinity : Math.max(0, s.cash) / net;
+    const recent = f.walkaways.filter((d) => s.day - d < 180).length;
+    const out = { round, runway, recent, fit: 0, label: 'Cold', canPitch: false, why: '', base: 0, mult: 1 };
+    if (!round) return out;
+    out.fit = clamp(round.want(s, v) || 0, 0, 1.5);
+    out.label = out.fit >= 1 ? 'Hot' : out.fit >= 0.6 ? 'Warm' : out.fit >= 0.3 ? 'Cool' : 'Cold';
+    // investors pay more when you do not need them, and less when you keep walking away
+    const need = runway < 3 ? 0.75 : runway < 6 ? 0.9 : runway >= 12 ? 1.05 : 1;
+    out.mult = clamp(0.6 + 0.4 * out.fit, 0.6, 1.2) * need * (1 - 0.1 * Math.min(3, recent));
+    out.base = v.valuation * out.mult;
+    if (!s.models.length) out.why = 'Train a model first. Investors want to see something work.';
+    else if (f.cd > s.day) out.why = `You can pitch again in ${f.cd - s.day} days`;
+    else if (f.offers.length) out.why = 'You have term sheets on the table';
+    else out.canPitch = true;
+    return out;
+  }
+
+  function pushOdds(s, v, o) {
+    const fv = fundingView(s, v);
+    const inv = D.INVESTORS.find((i) => i.id === o.type) || { push: 0 };
+    const leverage = fv.runway >= 12 ? 0.15 : fv.runway < 3 ? -0.2 : 0;
+    return clamp(0.5 + 0.25 * (Math.min(fv.fit, 1.4) - 1) + leverage + inv.push, 0.15, 0.85);
+  }
+
   // ---------- staff ----------
 
   function makeCandidate(s, role, skill) {
@@ -260,6 +538,7 @@
       role,
       skill,
       salary: salaryFor(role, skill, s.sentiment, s.day),
+      bio: AIT.FLAVOR ? AIT.FLAVOR.bio(role) : '',
     };
   }
 
@@ -277,14 +556,12 @@
   }
 
   function staffDaily(s, v) {
-    const decorBonus = Math.min(25, (12 * v.decor) / Math.max(1, s.staff.length));
-    const hypeBonus = Math.min(8, s.hype / 10);
     for (const p of [...s.staff]) {
       if (p.founder) {
         p.morale = 100;
       } else {
         p.perk = Math.max(0, (p.perk || 0) - 0.03);
-        const target = 45 + decorBonus + hypeBonus + p.perk + (s.cash < 0 ? -20 : 0);
+        const target = moraleTarget(s, v, p).total + p.perk;
         p.morale = clamp(p.morale + (target - p.morale) * 0.03, 0, 100);
       }
       if (p.trainUntil && p.trainUntil === s.day) {
@@ -292,7 +569,7 @@
         if (!p.founder) p.salary = Math.max(p.salary, salaryFor(p.role, p.skill, s.sentiment, s.day));
         news(s, `${p.name} finished training and is now skill ${p.skill}.`, 'good', true);
       }
-      if (!p.founder && p.morale < 25 && Math.random() < 0.01) {
+      if (!p.founder && p.morale < 25 && random() < 0.01) {
         s.staff = s.staff.filter((x) => x !== p);
         news(s, `${p.name} quit. Morale was too low. Add comfort items or pay more.`, 'bad', true);
       }
@@ -306,13 +583,14 @@
     for (const r of s.rivals) {
       const def = RIVAL_BY_ID[r.id];
       const push = v.bestCap > r.cap + 4 ? 1.15 : 1;
-      r.progress += (def.pace / 365) * push * (0.85 + 0.15 * s.sentiment);
+      const pace = def.pace * D.DIFFICULTY[s.difficulty || 'normal'].pace;
+      r.progress += (pace / 365) * push * (0.85 + 0.15 * s.sentiment);
       r.hype += (45 - r.hype) * 0.01;
       if (s.day < r.nextRelease) continue;
       const target = def.cap0 + (100 - def.cap0) * Math.pow(Math.min(1, r.progress / 9.5), 0.85);
       let cap = Math.max(r.cap + 0.3, target + rand(-1.5, 1.2));
       if (def.open) cap = Math.min(cap, Math.max(...closed.map((c) => c.cap)) - 3, 95);
-      cap = Math.min(100, cap);
+      cap = Math.min(s.mode === 'sandbox' ? 99.4 : 100, cap);
       if (cap <= r.cap) {
         r.nextRelease = s.day + randi(30, 60);
         continue;
@@ -322,7 +600,8 @@
       r.hype = Math.min(100, r.hype + 20);
       r.nextRelease = s.day + (def.open ? randi(50, 120) : randi(80, 170));
       const beat = v.flagship && r.cap > v.flagship.cap ? ' It beats your flagship.' : '';
-      news(s, `${def.name} releases ${def.model}-${r.version}, scoring ${r.cap.toFixed(1)} on OmniBench.${beat}`, beat ? 'warn' : 'info', !!beat);
+      const line = AIT.FLAVOR ? ' ' + AIT.FLAVOR.pick(AIT.FLAVOR.RIVAL_LINES[r.id]) : '';
+      news(s, `${def.name} releases ${def.model}-${r.version}, scoring ${r.cap.toFixed(1)} on OmniBench.${beat || line}`, beat ? 'warn' : 'info', !!beat);
       if (!def.open && r.cap >= 100) {
         endGame(s, false, `${def.name} announced AGI first. The race is over.`);
         return;
@@ -343,9 +622,20 @@
     let total = you;
     for (const r of s.rivals) {
       const def = RIVAL_BY_ID[r.id];
-      total += attract(r.cap, rivalAppeal(s), r.hype, 1, 1, 1) * (def.open ? 0.45 : 1);
+      total += attract(r.cap, rivalAppeal(s), r.hype, 1, 1, 1) * (def.open ? 0.45 : 1) * rivalBoost(s, r);
     }
     s.share = you / total;
+    // the other products compete against the same rivals
+    for (const pd of D.PRODUCTS) {
+      const st = s.products[pd.id];
+      if (!st || !st.live) continue;
+      const mine = attract(fm.cap, fm.appeal, s.hype, Math.pow(pd.price / st.price, 1.1), Math.pow(v.service, 1.5), v.brand);
+      st.share = mine / (total - you + mine);
+      st.target = v.market * pd.market * st.share;
+      if (st.users < st.target) st.users += (st.target - st.users) * 0.03 * v.growthMult + 0.2;
+      else st.users -= (st.users - st.target) * 0.04;
+      st.users = Math.max(0, st.users);
+    }
     s.targetSubs = v.market * s.share;
     if (s.subs < s.targetSubs) s.subs += (s.targetSubs - s.subs) * 0.03 * v.growthMult + 1;
     else s.subs -= (s.subs - s.targetSubs) * 0.04;
@@ -403,7 +693,7 @@
     const gain = v.trainPF * v.trainMult;
     job.done += gain;
     let spike = false;
-    if (gain > 0 && Math.random() < 0.006 * (1 - 0.6 * sat(v.E, 20))) {
+    if (gain > 0 && random() < 0.006 * (1 - 0.6 * sat(v.E, 20))) {
       job.done = Math.max(0, job.done - job.need * rand(0.02, 0.05));
       spike = true;
       news(s, `Loss spike during the ${job.name} run. Rolled back to the last checkpoint.`, 'warn', true);
@@ -438,20 +728,30 @@
     };
     s.models.push(m);
     s.training = null;
-    news(s, `${m.name} finished training. OmniBench score: ${cap.toFixed(1)}.`, 'good', true);
+    s.flags.lastTrainEnd = s.day;
+    s.reveal = m.id; // the UI shows a launch reveal for this model
+    news(s, `${m.name} finished training. OmniBench score: ${cap.toFixed(1)}.`, 'good');
     if (size.id === 'agi') {
-      endGame(s, true, `${m.name} is the first artificial general intelligence. ${s.company} won the race.`);
+      const al = alignment(s, v);
+      const text = {
+        aligned: `${m.name} is the first artificial general intelligence, and the world trusts it. ${s.company} won the race the right way.`,
+        uneasy: `${m.name} is the first artificial general intelligence. ${s.company} won the race, but regulators and the public are uneasy about what comes next.`,
+        reckless: `${m.name} is the first artificial general intelligence. ${s.company} won the race, and nobody, including you, is sure what you have built.`,
+      }[al.ending];
+      checkGoals(s);
+      endGame(s, true, text, al.ending);
     }
   }
 
   // ---------- events ----------
 
   function maybeEvent(s, v) {
-    if (s.events.length || Math.random() > 1 / 18) return;
+    // a quiet first month and a half so new players can find their feet
+    if (s.day < 45 || s.events.length || random() > 1 / 18) return;
     const pool = [];
     let total = 0;
     for (const ev of AIT.EVENTS) {
-      if ((s.eventCd[ev.id] || 0) > s.day) continue;
+      if ((s.eventCd[ev.id] || 0) > s.day || (ev.modal && s.day < 75)) continue;
       const w = ev.weight(s, v);
       if (w > 0) {
         pool.push([ev, w]);
@@ -459,7 +759,7 @@
       }
     }
     if (!pool.length) return;
-    let r = Math.random() * total;
+    let r = random() * total;
     let ev = pool[0][0];
     for (const [e, w] of pool) {
       if ((r -= w) <= 0) {
@@ -496,6 +796,7 @@
     const ev = AIT.EVENTS.find((e) => e.id === pending.id);
     const v = derive(s);
     const choice = ev.choices(s, pending.params, v)[idx];
+    log(s, 'choice', { id: ev.id, label: choice.label });
     const text = choice.run(s, pending.params, v);
     if (text) news(s, text, choice.kind || 'info', true);
   }
@@ -531,7 +832,7 @@
     s.history.push({
       label: d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }) + ' ' + d.getUTCFullYear(),
       cash: s.cash,
-      revenue: m.rev + m.crev,
+      revenue: m.rev + m.crev + (m.prev || 0),
       costs: m.salaries + m.rent + m.power + m.marketing + m.data,
       capex: m.capex,
       subs: Math.round(s.subs),
@@ -545,9 +846,9 @@
     if (hooks.month) hooks.month(s);
   }
 
-  function endGame(s, win, text) {
+  function endGame(s, win, text, ending) {
     if (s.over) return;
-    s.over = { win, text, day: s.day };
+    s.over = { win, text, day: s.day, ending: ending || null };
     news(s, text, win ? 'goal' : 'bad');
     if (hooks.over) hooks.over(s);
   }
@@ -571,6 +872,9 @@
     const rev = v.subRevenue / 30;
     s.cash += rev;
     s.month.rev += rev;
+    s.cash += v.productRevenue / 30;
+    s.month.prev += v.productRevenue / 30;
+    if (!s.training && s.models.length) s.stats.idleDays = (s.stats.idleDays || 0) + 1;
     contractsDaily(s, v);
 
     s.rp += v.rpDay;
@@ -585,9 +889,11 @@
 
     staffDaily(s, v);
     if (s.day - s.candidatesDay >= 7) refreshCandidates(s);
-    if (s.offer && s.day > s.offer.expires) {
-      news(s, `The ${s.offer.name} term sheet expired.`, 'warn');
-      s.offer = null;
+    const f = s.funding;
+    if (f.offers.length && s.day > f.offers[0].expires) {
+      news(s, `Your ${f.offers[0].name} term sheets expired.`, 'warn');
+      f.offers = [];
+      f.cd = s.day + 30;
     }
 
     v = derive(s);
@@ -599,12 +905,13 @@
     checkGoals(s);
     if (monthKey(s.day) !== s.monthKey) closeMonth(s, v);
 
-    if (s.cash < 0) {
+    if (s.cash < 0 && s.mode !== 'sandbox') {
       s.stats.negDays++;
       if (s.stats.negDays === 1) news(s, 'You are out of cash. Raise money or cut costs within 90 days.', 'bad', true);
       if (s.stats.negDays === 75) news(s, '15 days until bankruptcy.', 'bad', true);
       if (s.stats.negDays >= 90) endGame(s, false, `${s.company} ran out of money and shut down.`);
     } else {
+      if (s.stats.negDays > 0 && s.cash >= 0) s.flags.recovered = true;
       s.stats.negDays = 0;
     }
   }
@@ -616,9 +923,8 @@
 
   const A = {
     place(s, type, x, y) {
-      const size = D.OFFICES[s.officeLevel].size;
-      if (x < 0 || y < 0 || x >= size || y >= size) return no('Outside the office');
-      if (s.items.some((i) => i.x === x && i.y === y)) return no('That tile is taken');
+      const blocked = canPlace(s, type, x, y);
+      if (blocked) return no(blocked);
       const lock = itemLocked(s, type);
       if (lock) return no(lock);
       const cost = itemCost(s, type);
@@ -626,6 +932,7 @@
       s.cash -= cost;
       s.month.capex += cost;
       addItem(s, type, x, y);
+      log(s, 'buy', { t: type, n: 1 });
       return ok(cost);
     },
 
@@ -637,21 +944,22 @@
         const seats = s.items.reduce((a, i) => a + (D.ITEMS[i.type].seats || 0), 0);
         if (seats - d.seats < s.staff.length) return no('Someone sits here. Fire them or build another desk first.');
       }
-      const refund = Math.round(d.cost * 0.5);
+      const refund = Math.round(stat(it, 'cost') * 0.5);
       s.items = s.items.filter((i) => i !== it);
       s.cash += refund;
       s.month.capex -= refund;
+      log(s, 'sell', { t: it.type });
       return ok(refund);
     },
 
     moveOffice(s) {
       const next = D.OFFICES[s.officeLevel + 1];
       if (!next) return no('You already own the biggest campus');
-      if (next.round && !s.rounds.includes(next.round)) return no(`The landlord wants to see your ${D.ROUNDS.find((r) => r.id === next.round).name} first`);
       if (s.cash < next.moveCost) return no('Not enough cash');
       s.cash -= next.moveCost;
       s.month.capex += next.moveCost;
       s.officeLevel++;
+      log(s, 'move', { to: next.name });
       news(s, `${s.company} moves into a ${next.name}.`, 'good', true);
       return ok();
     },
@@ -665,7 +973,8 @@
       s.cash -= c.salary;
       s.month.salaries += c.salary;
       s.candidates = s.candidates.filter((x) => x !== c);
-      s.staff.push({ id: 's' + s.nextId++, name: c.name, role: c.role, skill: c.skill, salary: c.salary, morale: 70, trainUntil: 0, perk: 0 });
+      s.staff.push({ id: 's' + s.nextId++, name: c.name, role: c.role, skill: c.skill, salary: c.salary, bio: c.bio || '', morale: 70, trainUntil: 0, perk: 0 });
+      log(s, 'hire', { role: c.role, skill: c.skill, salary: c.salary });
       return ok(`${c.name} joined as ${D.ROLES[c.role].name}`);
     },
 
@@ -677,6 +986,7 @@
       s.month.salaries += p.salary;
       s.staff = s.staff.filter((x) => x !== p);
       for (const q of s.staff) if (!q.founder) q.morale = Math.max(0, q.morale - 4);
+      log(s, 'fire', { role: p.role, skill: p.skill });
       return ok(`${p.name} was let go`);
     },
 
@@ -690,6 +1000,7 @@
       s.cash -= cost;
       s.month.other += cost;
       p.trainUntil = s.day + 14;
+      log(s, 'course', { role: p.founder ? 'founder' : p.role, skill: p.skill });
       return ok(`${p.name} is off to a 14-day course`);
     },
 
@@ -725,6 +1036,7 @@
       s.cash -= cost;
       s.month.data += cost;
       const v = derive(s);
+      const paid = cost;
       const n = s.modelCounter + 1;
       s.modelCounter = n;
       s.training = {
@@ -736,15 +1048,22 @@
         name: size.id === 'agi' ? `${s.family}-Ω` : `${s.family}-${n} ${size.name}`,
         exp: expectedCap(s, sizeId, clean, v),
         loss: [],
+        cost: paid,
       };
+      log(s, 'train', { name: s.training.name, data: Object.keys(clean).filter((k) => clean[k]).join('+') });
       return ok(`Training ${s.training.name}`);
     },
 
     cancelTraining(s) {
       if (!s.training) return no('No training run');
-      news(s, `Training of ${s.training.name} was cancelled.`, 'warn');
+      const refund = Math.round((s.training.cost || 0) / 2);
+      s.cash += refund;
+      s.month.data -= refund;
+      news(s, `Training of ${s.training.name} was cancelled.${refund ? ' Half the data cost came back.' : ''}`, 'warn');
+      log(s, 'cancel', { name: s.training.name });
       s.training = null;
-      return ok();
+      s.flags.lastTrainEnd = s.day;
+      return ok(refund ? `Run cancelled. ${refund.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} of the data cost refunded.` : 'Run cancelled.');
     },
 
     deploy(s, id) {
@@ -759,9 +1078,18 @@
         gain += 12;
         s.flags.wasSota = true;
         msg = `${m.name} is live and tops the OmniBench leaderboard`;
+        // the leading lab answers
+        const rival = s.rivals.filter((r) => !RIVAL_BY_ID[r.id].open).reduce((a, r) => (r.cap > a.cap ? r : a));
+        if (s.day - (s.flags.lastCounter || -999) > 120) {
+          s.flags.lastCounter = s.day;
+          rival.nextRelease = Math.min(rival.nextRelease, s.day + randi(20, 45));
+          rival.progress += 0.04;
+          news(s, `${RIVAL_BY_ID[rival.id].name} is rushing out a response to ${m.name}.`, 'warn', true);
+        }
       }
       s.hype = Math.min(100, s.hype + gain);
       s.flags.lastDeploy = s.day;
+      log(s, 'deploy', { name: m.name, cap: m.cap });
       news(s, msg + '.', 'good');
       return ok(msg);
     },
@@ -772,6 +1100,7 @@
       if (m.id === s.flagshipId) return no('Deploy a different flagship first');
       if (m.size === 'agi') return no('Absolutely not');
       m.open = true;
+      log(s, 'open', { name: m.name });
       const gain = Math.min(12, m.cap * 0.25);
       s.hype = Math.min(100, s.hype + gain);
       s.flags.openBonus = Math.min(1.5, (s.flags.openBonus || 0) + 0.3);
@@ -782,18 +1111,27 @@
     },
 
     setPrice(s, p) {
+      const from = s.price;
       s.price = clamp(Math.round(p), 5, 60);
+      if (s.price !== from) log(s, 'price', { from, to: s.price });
       return ok();
     },
 
     setAlloc(s, auto, share) {
+      const before = s.autoAlloc + ':' + s.allocTrain;
       s.autoAlloc = !!auto;
       if (share != null) s.allocTrain = clamp(share, 0, 1);
+      if (before !== s.autoAlloc + ':' + s.allocTrain) {
+        const last = s.log && s.log[s.log.length - 1];
+        if (last && last.a === 'alloc' && last.d === s.day) s.log.pop();
+        log(s, 'alloc', { auto: s.autoAlloc, share: s.allocTrain });
+      }
       return ok();
     },
 
     campaign(s, id) {
       const c = D.CAMPAIGNS.find((x) => x.id === id);
+      if ((c.minOffice || 0) > s.officeLevel) return no(`Needs ${D.OFFICES[c.minOffice].name}`);
       if ((s.campaignCd[id] || 0) > s.day) return no('On cooldown');
       if (s.cash < c.cost) return no('Not enough cash');
       s.cash -= c.cost;
@@ -803,45 +1141,127 @@
       const gain = c.hype * (1 - s.hype / 120) * boost * (1 + 0.3 * sat(v.G, 15));
       s.hype = Math.min(100, s.hype + gain);
       s.campaignCd[id] = s.day + c.cd;
+      log(s, 'campaign', { id });
       return ok(`${c.name}: +${gain.toFixed(1)} hype`);
     },
 
+    // Pitching brings back up to three competing term sheets, or none if
+    // investors are not interested yet.
     pitch(s) {
-      const round = D.ROUNDS[s.rounds.length];
-      if (!round) return no('No more rounds to raise');
-      if (s.offer) return no('You already have a term sheet');
-      if (s.roundCd > s.day) return no(`Investors want to wait ${s.roundCd - s.day} more days`);
+      const f = s.funding;
       const v = derive(s);
-      if (!round.req(s, v)) return no(`Not yet: ${round.reqText}`);
-      const pre = v.valuation * rand(0.9, 1.15);
-      const raise = Math.max(round.min, (pre * round.dil) / (1 - round.dil));
-      s.offer = { id: round.id, name: round.name, pre, raise, dilution: raise / (pre + raise), expires: s.day + 14 };
-      return ok(`Term sheet received for your ${round.name}`);
+      const fv = fundingView(s, v);
+      if (!fv.round) return no('There is nothing left to raise');
+      if (f.offers.length) return no('You already have term sheets on the table');
+      if (!fv.canPitch) return no(fv.why);
+      f.pitches++;
+      const n = fv.fit >= 1 ? 3 : fv.fit >= 0.6 ? 2 : fv.fit >= 0.3 ? 1 : 0;
+      if (!n) {
+        f.cd = s.day + 30;
+        log(s, 'pitch', { round: fv.round.name, offers: 0 });
+        return ok(`Investors passed on your ${fv.round.name}. They want to see ${fv.round.wantText}.`);
+      }
+      // a cool reception only gets the friendliest fund, and a smaller check
+      const types = n === 1 ? [D.INVESTORS[1]] : D.INVESTORS.slice().sort(() => random() - 0.5).slice(0, n);
+      f.offers = types.map((inv, i) => {
+        const pre = fv.base * rand(inv.val[0], inv.val[1]);
+        const typical = Math.max(fv.round.min, (pre * fv.round.dil) / (1 - fv.round.dil));
+        const raise = typical * rand(inv.size[0], inv.size[1]) * (n === 1 ? 0.5 : 1);
+        return {
+          oid: 'o' + s.nextId++, type: inv.id, kind: inv.kind, investor: pick(inv.names), perk: inv.perk,
+          round: fv.round.id, name: fv.round.name, pre, raise, dilution: raise / (pre + raise), pushed: false, expires: s.day + 14,
+        };
+      });
+      log(s, 'pitch', { round: fv.round.name, offers: n });
+      return ok(`${n} term sheet${n === 1 ? '' : 's'} for your ${fv.round.name}`);
     },
 
-    acceptOffer(s) {
-      const o = s.offer;
-      if (!o) return no('No offer');
+    acceptOffer(s, oid) {
+      const f = s.funding;
+      const o = f.offers.find((x) => x.oid === oid) || (oid == null && f.offers[0]);
+      if (!o) return no('That offer is gone');
       s.cash += o.raise;
       s.month.funding += o.raise;
       s.equity *= 1 - o.dilution;
-      s.rounds.push(o.id);
-      s.offer = null;
+      s.rounds.push(o.round);
       s.hype = Math.min(100, s.hype + 4);
-      if (o.id === 'ipo') s.flags.public = true;
-      news(s, `${s.company} closes its ${o.name}.`, 'good', true);
+      if (o.perk === 'hype') s.hype = Math.min(100, s.hype + 12);
+      if (o.perk === 'cloud') {
+        const pf = Math.max(20, derive(s).effPF * 0.3);
+        s.cloud = { pf: Math.max(pf, s.cloud && s.cloud.until > s.day ? s.cloud.pf : 0), until: s.day + 365 };
+      }
+      if (o.round === 'ipo') s.flags.public = true;
+      log(s, 'raise', { round: o.name, investor: o.investor, raise: Math.round(o.raise), pre: Math.round(o.pre), dil: Math.round(o.dilution * 1000) / 10 });
+      f.last = { day: s.day, round: o.name, raise: o.raise, pre: o.pre };
+      f.offers = [];
+      f.walkaways = [];
+      news(s, `${s.company} closes its ${o.name}, led by ${o.investor}.`, 'good', true);
       return ok();
     },
 
-    declineOffer(s) {
-      if (!s.offer) return no('No offer');
-      s.offer = null;
-      s.roundCd = s.day + 30;
-      return ok('Offer declined. Investors will listen again in 30 days.');
+    // Ask for a higher valuation. It works more often when you do not need the money.
+    pushOffer(s, oid) {
+      const f = s.funding;
+      const o = f.offers.find((x) => x.oid === oid);
+      if (!o) return no('That offer is gone');
+      if (o.pushed) return no('You already pushed this investor');
+      const odds = pushOdds(s, derive(s), o);
+      o.pushed = true;
+      if (random() < odds) {
+        o.pre *= 1.2;
+        o.dilution = o.raise / (o.pre + o.raise);
+        log(s, 'push', { investor: o.investor, won: true });
+        return ok(`${o.investor} agreed: now ${money(o.pre)} before the money, ${(o.dilution * 100).toFixed(1)}% of the company.`);
+      }
+      f.offers = f.offers.filter((x) => x !== o);
+      log(s, 'push', { investor: o.investor, won: false });
+      if (!f.offers.length) f.cd = s.day + 30;
+      news(s, `${o.investor} walked away from the table.`, 'warn');
+      return no(`${o.investor} walked away.`);
+    },
+
+    // Turn down every offer. Investors remember for a while.
+    walkAway(s) {
+      const f = s.funding;
+      if (!f.offers.length) return no('No offers to turn down');
+      const best = f.offers.reduce((a, o) => (o.raise > a.raise ? o : a));
+      f.last = { day: s.day, round: best.name, raise: best.raise, pre: best.pre, declined: true };
+      log(s, 'walk', { round: best.name, n: f.offers.length });
+      f.offers = [];
+      f.walkaways.push(s.day);
+      f.cd = s.day + 30;
+      return ok('You walked away. Investors will take your call again in 30 days.');
     },
 
     sandbox(s) {
       if (s.over) s.over.sandbox = true;
+      return ok();
+    },
+
+    launchProduct(s, id) {
+      const pd = D.PRODUCTS.find((p) => p.id === id);
+      const st = s.products[id];
+      if (!pd || !st) return no('Unknown product');
+      if (st.live) return no('Already live');
+      if (!s.techs[pd.tech]) return no(`Research ${D.TECH_BY_ID[pd.tech].name} first`);
+      if (!s.flagshipId) return no('Deploy a model first');
+      if (s.cash < pd.launch) return no('Not enough cash');
+      s.cash -= pd.launch;
+      s.month.marketing += pd.launch;
+      st.live = true;
+      s.hype = Math.min(100, s.hype + 5);
+      log(s, 'launch', { id });
+      news(s, `${s.company} launches ${pd.name}.`, 'good', true);
+      return ok(`${pd.name} is live`);
+    },
+
+    setProductPrice(s, id, price) {
+      const pd = D.PRODUCTS.find((p) => p.id === id);
+      const st = s.products[id];
+      if (!pd || !st) return no('Unknown product');
+      const from = st.price;
+      st.price = clamp(Math.round(price), pd.minPrice, pd.maxPrice);
+      if (st.price !== from) log(s, 'pprice', { id, from, to: st.price });
       return ok();
     },
   };
@@ -849,10 +1269,13 @@
   const trainCostFor = (p) => Math.max(2000, Math.round((p.salary || 6000) * 1.5));
 
   AIT.Sim = {
-    newGame, tick, derive, actions: A, hooks, news, addEffect, effectMult, itemCost, itemLocked,
+    newGame, tick, derive, actions: A, fundingView, pushOdds, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
+    sizeOf, stat, itemAt, occupied, canPlace, gap, seating, rivalBoost, hooks, news, addEffect, effectMult, itemCost, itemLocked,
     expectedCap, trainingCost, salaryFor, trainCostFor, eventView, resolveEvent, endGame, makeCandidate,
     dateOf, flagship, topRival, marketSize, techTotals, refreshCandidates,
-    util: { clamp, rand, randi, pick, sat, round1 },
+    util: { clamp, rand, randi, pick, sat, round1, random },
+    seed,
+    rngState: () => rngState,
     RIVAL_BY_ID,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

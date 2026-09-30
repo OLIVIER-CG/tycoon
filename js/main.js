@@ -13,18 +13,20 @@
       if (n > 0) this.lastSpeed = n;
       this.speed = n;
     },
-    newGame(company, family) {
-      this.s = Sim.newGame({ company, family });
+    newGame(company, family, opts = {}) {
+      this.s = Sim.newGame(Object.assign({ company, family }, opts));
       Render.selected = null;
       Render.setTool(null);
       Render.fit(D.OFFICES[0].size);
       UI.resetOver();
+      AIT.Mentor.reset();
       this.setSpeed(1);
       this.save();
       UI.renderPanel(true);
     },
     save() {
       try {
+        this.s.rng = Sim.rngState(); // keeps a daily-seed game on the same dice after a reload
         localStorage.setItem(KEY, JSON.stringify(this.s));
       } catch (e) {
         /* storage can be unavailable; the game still runs */
@@ -40,9 +42,12 @@
     },
   });
 
+  // Old saves are upgraded step by step; saves from a newer version are ignored.
   function hydrate(obj) {
-    if (!obj || obj.v !== 1 || !Array.isArray(obj.items)) return null;
-    return Object.assign(Sim.newGame(), obj);
+    if (!obj || typeof obj.v !== 'number' || obj.v > Sim.VERSION || !Array.isArray(obj.items)) return null;
+    const s = Object.assign(Sim.newGame(), Sim.migrate(obj));
+    if (typeof s.rng === 'number') Sim.seed(s.rng);
+    return s;
   }
 
   Sim.hooks.toast = (text, kind) => UI.toast(text, kind);
@@ -57,6 +62,8 @@
     const s = game.s;
     const blocked = UI.isBlocking() || s.events.length > 0 || (s.over && !s.over.sandbox);
     const running = !blocked && game.speed > 0;
+    // real play time: only while the page is open and visible, and the run is not over
+    if (!document.hidden && !(s.over && !s.over.sandbox)) s.playMs = (s.playMs || 0) + dt * 1000;
     if (running) {
       acc += dt * SPEEDS[game.speed];
       let n = 0;
@@ -79,6 +86,7 @@
     const canvas = document.getElementById('view');
     Render.init(canvas, UI.canvasCb);
     UI.init();
+    AIT.Mentor.init();
     let restored = null;
     try {
       restored = data && data.save ? hydrate(JSON.parse(data.save)) : null;

@@ -1,11 +1,17 @@
 {
   "name": "ai-boom-tycoon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "An isometric tycoon game about building an AI lab and racing rivals to AGI.",
   "scripts": {
     "start": "npx --yes serve .",
-    "sim": "node tools/simulate.js 20"
+    "test": "node --test tests/*.test.js",
+    "sim": "node tools/simulate.js 20",
+    "build": "node tools/build-artifact.js",
+    "analyze": "node tools/analyze-runs.js"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  }
 }

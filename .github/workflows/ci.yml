@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check syntax
+        run: for f in js/*.js tools/*.js tests/*.js; do node --check "$f"; done
+      - name: Run tests
+        run: npm test
+      - name: Build the single-file version
+        run: npm run build
