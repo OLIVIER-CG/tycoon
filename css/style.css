@@ -912,7 +912,9 @@ body.title-on #dock, body.title-on #inspect, body.title-on #toolbar, body.title-
   .dock-meters { display: none; }
   .dock-item { flex-basis: 128px; }
   #inspect { left: 64px; width: calc(100% - 76px); }
-  .mentor { left: 64px; width: calc(100% - 76px); padding: 10px; gap: 10px; }
+  /* above full-screen windows: the game waits while she talks, so she must be seen */
+  .mentor { left: 64px; width: calc(100% - 76px); padding: 10px; gap: 10px; z-index: 46; }
+  body.win-open .mentor { left: 12px; width: calc(100% - 24px); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
   .m-face { width: 44px; height: 44px; }
   .m-text { font-size: 14.5px; min-height: 0; }
   #win-root { padding: 0; z-index: 40; } /* full screen on phones, above the bars; close with × */
@@ -927,7 +929,7 @@ body.title-on #dock, body.title-on #inspect, body.title-on #toolbar, body.title-
   .zoom { bottom: calc(var(--bar-h) + 12px + env(safe-area-inset-bottom, 0px)); }
   .zoom button { width: 38px; height: 38px; }
   /* above the bottom bar, clear of the milestone card */
-  #toasts { bottom: calc(var(--bar-h) + 12px + env(safe-area-inset-bottom, 0px)); left: 64px; right: 60px; width: auto; align-items: stretch; }
+  #toasts { bottom: calc(var(--bar-h) + 12px + var(--mentor-h, 0px) + env(safe-area-inset-bottom, 0px)); left: 64px; right: 60px; width: auto; align-items: stretch; }
   .slot { grid-template-columns: 1fr auto auto; gap: 8px 10px; padding: 12px 14px; }
   .slot .ic { display: none; }
   .slot .grow { grid-column: 1 / -1; }

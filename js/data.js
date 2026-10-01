@@ -102,9 +102,9 @@
 
   // Research tree in seven tiers. Costs are research points (RP).
   const TECHS = [
-    { id: 'scaling_laws', name: 'Scaling Laws', cost: 20, req: [], tier: 1, desc: 'Unlocks Small (8B) models.' },
-    { id: 'flash_attention', name: 'FlashAttention', cost: 35, req: [], tier: 1, desc: '+20% training speed.', train: 0.2 },
-    { id: 'rlhf', name: 'RLHF', cost: 50, req: ['scaling_laws'], tier: 1, desc: 'New models +12% appeal. Unlocks human feedback data.', appeal: 0.12 },
+    { id: 'scaling_laws', name: 'Scaling Laws', cost: 30, req: [], tier: 1, desc: 'Unlocks Small (8B) models.' },
+    { id: 'flash_attention', name: 'FlashAttention', cost: 60, req: [], tier: 1, desc: '+20% training speed.', train: 0.2 },
+    { id: 'rlhf', name: 'RLHF', cost: 90, req: ['scaling_laws'], tier: 1, desc: 'New models +12% appeal. Unlocks human feedback data.', appeal: 0.12 },
 
     { id: 'quantization', name: 'Quantization', cost: 220, req: [], tier: 2, desc: '+40% users served per GPU.', infer: 0.4 },
     { id: 'eval_harness', name: 'Eval Harness', cost: 300, req: ['scaling_laws'], tier: 2, desc: 'You measure what matters: new models +3% capability.', cap: 0.03 },
@@ -260,7 +260,7 @@
     { id: 'subs500', text: 'Reach 500 subscribers', hint: 'Keep your model deployed and your GPUs cool.', check: (s) => s.subs >= 500, reward: { hype: 5 } },
     { id: 'preseed', text: 'Fund your lab', hint: 'Pitch investors in Finance, or grow on revenue to $150k in the bank.', check: (s) => s.rounds.length > 0 || s.cash >= 150e3, reward: { hype: 5 } },
     { id: 'scaling', text: 'Research Scaling Laws', hint: 'Open Research. Researchers earn RP every day.', check: (s) => !!s.techs.scaling_laws, reward: { rp: 10 } },
-    { id: 'loft', text: 'Move into the Mission', hint: 'Build, then Next office. The Victorian flat holds workstations.', check: (s) => s.officeLevel >= 1, reward: { hype: 5 } },
+    { id: 'loft', text: 'Move into the Mission', hint: 'Research Scaling Laws, then raise money or reach 500 subscribers. Real estate is on the left.', check: (s) => s.officeLevel >= 1, reward: { hype: 5 } },
     { id: 'small', text: 'Train a Small model', hint: 'About 6,000 PF-days of compute, plus $25k to $175k of training data. Keep cash for the data.', check: (s) => hasSize(s, 'small'), reward: { cash: 50000 } },
     { id: 'soma', text: 'Move into a SoMa loft', hint: 'More power, more room and space for a real team.', check: (s) => s.officeLevel >= 2, reward: { hype: 6 } },
     { id: 'subs10k', text: 'Reach 10,000 subscribers', hint: 'A better model and some hype will do it.', check: (s) => s.subs >= 10000, reward: { hype: 8 } },

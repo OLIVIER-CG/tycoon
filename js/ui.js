@@ -451,6 +451,13 @@
           <div class="callout ${risky ? 'warn' : ''}">${note}</div>
           <button class="btn ${ui.confirm === 'move' ? 'danger' : 'primary'} wide" data-act="confirm" data-key="move"${disabled(s.cash < next.moveCost)}>${ui.confirm === 'move' ? `Confirm: move for ${money(next.moveCost)}` : `Move to ${esc(next.place)} · ${money(next.moveCost)}`}</button>
         </section>`;
+    } else if (next) {
+      nextHtml = `
+        <section class="card">
+          <div class="row between"><div><div class="eyebrow">Next office · ${esc(next.place)}</div><div class="place" style="font:800 21px/1.15 var(--display)">${esc(next.name)}</div></div><span class="tag">Not yet</span></div>
+          <p class="note">${esc(next.blurb)}</p>
+          <div class="callout">${esc(Progress.officeWhy(s))}</div>
+        </section>`;
     }
     const estate = D.OFFICES.map((x, i) => {
       const cls = i === s.officeLevel ? 'here' : i === s.officeLevel + 1 ? 'next' : i > s.officeLevel ? 'future' : '';
@@ -1649,7 +1656,7 @@
       <h2 class="chapter-title">${ch.title}</h2>
       <p>${typeof ch.text === 'function' ? ch.text(s) : ch.text}</p>
       <div class="eyebrow">What's new</div>
-      <ul class="chapter-new">${ch.news.map((n) => `<li>${n}</li>`).join('')}</ul>
+      <ul class="chapter-new">${(typeof ch.news === 'function' ? ch.news(s) : ch.news).map((n) => `<li>${n}</li>`).join('')}</ul>
       <div class="row gap"><button class="btn primary" data-modal="close">Let's go</button></div>`,
       'chapter',
       false,

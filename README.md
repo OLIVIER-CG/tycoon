@@ -165,18 +165,32 @@ is done. The game counts real play time
 loop you can switch off in the Menu, and synthesized sound effects.
 
 **Mentor and the first ten minutes.** Mira Castell, a founder who has built
-two labs, says hello in one short message and then keeps a checklist at the
-top right. It takes a new player through the first ten minutes in four parts:
+two labs, welcomes you in three short pages and then keeps a checklist at the
+top right. It tells the story of the lab's first year in five parts, and each
+part opens with a few lines from Mira that set the scene (the game pauses
+while she talks):
 
 1. **The garage:** build three more gaming rigs, train a Tiny model, speed up
    time, deploy it.
-2. **First believers:** raise a pre-seed round (skippable), research Scaling
-   Laws.
-3. **Moving out:** move to the Mission, fill it with workstations until a
-   Small model fits in 120 days (180 on a smaller raise, so the plan fits the
-   budget), and add cooling if the GPUs overheat.
-4. **A real model:** train a Small model, run a free hype campaign, ship it,
-   and hire a researcher once the lab can afford one.
+2. **First users:** open the Race to see who you're up against, post a free
+   hype thread, and wait for 300 subscribers while hype fades (skippable).
+3. **Believers:** research Scaling Laws (your pitch, and what unlocks Small
+   models), raise a pre-seed round (skippable), and hire a researcher if the
+   raise can carry a salary.
+4. **Outgrowing the garage:** fill it with eight rigs, feel the heat and add
+   a fan, then move to the Mission.
+5. **A real model:** fill the flat with workstations until a Small run fits
+   the budget (the target is the fastest run that still leaves the training
+   data, a year of running costs and a cushion), keep it cool, train the
+   Small model and ship it.
+
+The garage is meant to take a while. There you research at half speed (you
+are also the sysadmin, the support desk and the accountant), and the first
+technologies cost 30, 60 and 90 research points, so they arrive one at a
+time. The Mission landlord only rents to a lab
+with Scaling Laws and a way to pay: a funding round, 500 subscribers or $150k
+in the bank. Real estate says what is missing until then. Played by the
+book, the move comes one to three months after launch, not days.
 
 Every item is one line of instructions with live progress (training %, days
 a Small run would take, research points), a Show me button that opens the

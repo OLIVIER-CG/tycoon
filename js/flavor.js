@@ -15,9 +15,9 @@
     },
     {
       id: 'believers', num: 2, title: 'Believers in the Avenues',
-      when: (s) => s.rounds.length > 0 || s.subs >= 250,
-      text: (s) => (s.rounds.length ? 'An investor drove up from Sand Hill Road, watched one demo and wired money before the fog lifted.' : 'Two hundred and fifty strangers now pay you every month, and one of them lives on your block.') + ' For the first time, other people are betting on you. Time to hire.',
-      news: ['Team: hire people (each needs a Standing Desk)', 'Comfort items keep the team happy', 'A flat in the Mission is up for rent'],
+      when: (s) => s.rounds.length > 0 || s.subs >= 1000,
+      text: (s) => (s.rounds.length ? 'An investor drove up from Sand Hill Road, watched one demo and wired money before the fog lifted.' : 'A thousand strangers now pay you every month, and one of them lives on your block.') + ' For the first time, other people are betting on you. Time to hire.',
+      news: (s) => ['Team: hire people (each needs a Standing Desk)', 'Comfort items keep the team happy', s.techs.scaling_laws ? 'A flat in the Mission is up for rent' : 'Research Scaling Laws and a flat in the Mission opens up'],
     },
     {
       id: 'mission', num: 3, title: '24th and Mission',

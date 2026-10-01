@@ -22,18 +22,34 @@
   const lastModelDay = (s) => s.models.reduce((a, m) => Math.max(a, m.day), -1);
 
   // ---------- the first ten minutes: Mira's checklist ----------
-  // Four acts take a new player from one gaming PC to a Small model in the
-  // Mission. Each objective is one line of instructions with live progress, a
-  // Show me button and a highlight on the thing to press. Objectives tick off
-  // the moment they are done (or are skipped if already done), the game never
-  // pauses for them, and Mira only speaks at the very start and the very end.
+  // Five parts tell the story of a lab's first year, from one gaming PC in a
+  // garage to a Small model in the Mission. Each part opens with a few lines
+  // from Mira, and each objective is one line of instructions with live
+  // progress, a Show me button and a highlight on the thing to press.
+  // Objectives tick off the moment they are done (or are skipped if already
+  // done), and the game only pauses while Mira is talking.
   const trainRate = (s, v) => Math.max(0.01, (s.training ? v.trainPF : s.autoAlloc ? Math.max(0, v.effPF - v.need * 1.15) : v.effPF * s.allocTrain) * v.trainMult);
   const smallDays = (s, v) => Math.ceil(D.SIZE_BY_ID.small.pfdays / trainRate(s, v));
   const trainPct = (s) => (s.training ? [s.training.done, s.training.need, `${Math.floor((s.training.done / s.training.need) * 100)}%`] : null);
   const hasSize = (s, id) => s.models.some((m) => m.size === id) || (s.training && s.training.size === id);
   // days a Small run may take once the lab is set up; a smaller raise buys fewer GPUs,
-  // so the target is fixed when the objective starts, from the cash on hand
+  // so the target is fixed when the objective starts: the fastest run whose
+  // GPUs still leave the training data, a year of running costs and a cushion
   const smallTarget = (s) => (s.mentor && s.mentor.smallTarget) || 120;
+  const pickSmallTarget = (s, v) => {
+    const small = D.SIZE_BY_ID.small, ws = D.ITEMS.workstation;
+    const reserve = small.data.licensed + 12 * Math.max(0, v.burnMonth - v.mrr) + 60e3;
+    const pfCost = (Sim.itemCost(s, 'workstation') + D.ITEMS.ac.cost / 3) / ws.pf; // a workstation, and a third of an AC unit to cool it
+    for (const days of [120, 180, 240]) {
+      const extra = Math.max(0, small.pfdays / days - trainRate(s, v)) / (v.trainMult || 1);
+      if (s.cash - extra * pfCost >= reserve) return days;
+    }
+    return 300;
+  };
+  // never let the GPUs eat the money for the training data: once another
+  // workstation would, the lab trains with what it has, slower but solvent
+  const dataCost = () => D.SIZE_BY_ID.small.data.licensed;
+  const budgetSpent = (s, v) => smallDays(s, v) <= 720 && s.cash < Sim.itemCost(s, 'workstation') + dataCost() + 20e3;
   const roomFor = (s, type) => {
     const n = D.OFFICES[s.officeLevel].size, occ = Sim.occupied(s);
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!Sim.canPlace(s, type, x, y, occ)) return true;
@@ -42,28 +58,62 @@
   const noRoom = ' No free floor? Press Sell on the left and tap a GPU, then add the AC.';
   // the Build button, then the shelf's tab, then the item: each lights up only until it's done
   const shelf = (cat, ...items) => ['#tools [data-act="build"]:not(.on)', `#dock .dock-cat[data-cat="${cat}"]:not(.on)`, ...items.map((i) => `#dock [data-item="${i}"]`)];
+  const USERS = 300; // enough real users to walk into a pitch with
+  const RIGS = 8; // a full garage: just past what its cooling handles
+  const slCost = () => D.TECH_BY_ID.scaling_laws.cost;
+  const outOfGarage = (s) => s.officeLevel > 0;
 
+  // story: what Mira says as the part begins (the first part has the welcome instead)
   const ACTS = {
     garage: { n: 1, title: 'The garage' },
-    money: { n: 2, title: 'First believers' },
-    move: { n: 3, title: 'Moving out' },
-    small: { n: 4, title: 'A real model' },
+    users: {
+      n: 2, title: 'First users',
+      story: [
+        "It's live. One billion parameters, trained in a garage, answering strangers on the internet. It isn't smart yet, but it's yours.",
+        "Your first subscriber asked it for a wedding toast. It rhymed ‘love’ with ‘GPU’, and they paid anyway. Now let's find a few hundred more, and see who we're up against.",
+      ],
+    },
+    believers: {
+      n: 3, title: 'Believers',
+      story: (s) => [
+        s.rounds.length
+          ? 'You already have investors. Now give them a plan worth the money: research first, then your first hire.'
+          : `${Math.round(s.subs).toLocaleString('en-US')} people pay you every month. A partner at a Sand Hill Road fund saw your thread and wants coffee in Palo Alto on Thursday.`,
+        ...(s.rounds.length ? [] : ["Investors fund the next model, not this one, so let's walk in with a plan. Research first, then money, then your first hire."]),
+      ],
+    },
+    outgrow: {
+      n: 4, title: 'Outgrowing the garage',
+      story: (s) => [
+        s.rounds.length && s.staff.length > 1 ? "Money in the bank and a researcher at the next desk. Let's find out how much this garage can take." : "Let's find out how much this garage can take.",
+        'More GPUs train faster, but every one of them turns power into heat. Keep an eye on the Heat meter on the build shelf.',
+      ],
+    },
+    mission: {
+      n: 5, title: 'A real model',
+      story: [
+        'Unpack later. A Small model needs about 6,000 PF-days of compute, a hundred times your Tiny. That means 4-GPU workstations, and a lot of them.',
+        "It'll be hot, it'll be loud and the power bill will make you wince. That's what a real lab feels like.",
+      ],
+    },
   };
+  const PARTS = Object.keys(ACTS).length;
 
   const TUTORIAL = [
+    // 1. the garage: build, train, wait, ship
     {
       id: 'rigs', act: 'garage',
       title: 'Build 3 more gaming rigs',
-      how: 'Press Build on the left, pick Gaming Rig, then tap empty floor. Drag to place a row.',
+      how: 'Training a model eats compute. Press Build on the left, pick Gaming Rig, then tap empty floor. Each rig adds 1 petaFLOPS.',
       go: 'build:compute',
       highlight: shelf('compute', 'rig'),
       progress: (s) => [Math.min(3, count(s, 'rig') - 1), 3],
-      done: (s) => count(s, 'rig') >= 4 || s.officeLevel > 0,
+      done: (s) => count(s, 'rig') >= 4 || outOfGarage(s),
     },
     {
       id: 'train', act: 'garage',
       title: 'Train your first model',
-      how: 'Open Models with the round button at the top. Tiny with licensed data is ready: press Start training.',
+      how: 'Open Models with the round button at the top. Tiny has 1 billion parameters, small enough for a garage. Licensed data is picked: press Start training.',
       go: 'models:train:tiny',
       highlight: ['#rail [data-screen="models"]', '[data-act="start-train"]'],
       done: (s) => !!s.training || s.models.length > 0,
@@ -71,7 +121,7 @@
     {
       id: 'speed', act: 'garage',
       title: 'Speed up time',
-      how: 'Training is measured in days. Press one of the fast-forward buttons at the top left. Space pauses.',
+      how: 'Training takes days of compute. Press one of the fast-forward buttons at the top left. Space pauses.',
       highlight: ['#speed'],
       progress: trainPct,
       done: (s) => (AIT.game && AIT.game.speed >= 2) || s.models.length > 0,
@@ -85,37 +135,96 @@
       progress: trainPct,
       done: (s) => !!s.flagshipId,
     },
+    // 2. first users: the race, hype, and waiting for people to show up
     {
-      id: 'raise', act: 'money',
+      id: 'race', act: 'users',
+      title: 'See who you’re up against',
+      how: 'The first lab to score 100 on OmniBench builds AGI and wins. Open the Race with the flag button at the top and see where your Tiny lands.',
+      go: 'race:board',
+      highlight: ['#rail [data-screen="race"]'],
+      done: (s) => !!(s.tabSeen && s.tabSeen.race) || outOfGarage(s),
+    },
+    {
+      id: 'campaign', act: 'users',
+      title: 'Post a hype thread',
+      how: 'Nobody knows you exist yet. Hype brings subscribers and fades a little every day. Start the free Cryptic Hype Thread in Market › Marketing.',
+      go: 'market:marketing',
+      highlight: ['#rail [data-screen="market"]', '[data-act="campaign"][data-id="thread"]'],
+      done: (s) => s.log.some((e) => e.a === 'campaign') || outOfGarage(s),
+    },
+    {
+      id: 'users', act: 'users',
+      title: `Reach ${USERS} subscribers`,
+      how: 'People find you on their own while there is hype. Fast-forward and watch the subscriber count at the bottom. A Tiny model only goes so far, so growth slows down.',
+      highlight: ['#speed', '#st-subs'],
+      progress: (s) => [Math.min(USERS, s.subs), USERS, `${Math.floor(s.subs)} / ${USERS}`],
+      done: (s) => s.subs >= USERS || s.rounds.length > 0 || outOfGarage(s),
+      skip: 'You can pitch investors before this, but with fewer users they offer less.',
+    },
+    // 3. believers: a plan, the money, the first hire
+    {
+      id: 'research', act: 'believers',
+      title: 'Research Scaling Laws',
+      how: () => `You earn about one research point a day, plus a trickle from idle GPUs. Spend ${slCost()} in R&D on Scaling Laws: bigger models, predictably better. It unlocks Small models, and it's your pitch.`,
+      go: 'research:avail',
+      highlight: ['#rail [data-screen="research"]', '.tech[data-id="scaling_laws"]', '[data-act="research"][data-id="scaling_laws"]'],
+      progress: (s) => [Math.min(slCost(), Math.floor(s.rp)), slCost(), s.rp >= slCost() ? 'ready' : `${Math.floor(s.rp)} / ${slCost()} RP`],
+      done: (s) => !!s.techs.scaling_laws,
+    },
+    {
+      id: 'raise', act: 'believers',
       title: 'Raise a pre-seed round',
-      how: 'Open Money › Funding and pitch. Take the offer you like: you sell a small slice of the company for cash to grow.',
+      how: 'Open Money › Funding and pitch. With a live model and real subscribers, investors are keen. Take the offer you like: you sell a slice of the company for the cash to grow.',
       go: 'finance:funding',
       highlight: ['#rail [data-screen="finance"]', '[data-act="pitch"]', '[data-act="accept"]'],
       done: (s) => s.rounds.length > 0,
       skip: 'Raising is optional, but a garage can’t pay for the next step on its own.',
     },
     {
-      id: 'research', act: 'money',
-      title: 'Research Scaling Laws',
-      how: 'Research points pile up on their own. Spend 20 in R&D: Scaling Laws unlocks Small models.',
-      go: 'research:avail',
-      highlight: ['#rail [data-screen="research"]', '.tech[data-id="scaling_laws"]', '[data-act="research"][data-id="scaling_laws"]'],
-      progress: (s) => [Math.min(20, Math.floor(s.rp)), 20, s.rp >= 20 ? 'ready' : `${Math.floor(s.rp)} / 20 RP`],
-      done: (s) => !!s.techs.scaling_laws,
+      id: 'hire', act: 'believers',
+      title: 'Hire a researcher',
+      // a researcher costs $7-19k a month. Only for a lab that can carry that and
+      // still afford the Mission's workstations; a smaller raise hires later.
+      when: (s, v) => v.profitMonth >= 15000 || s.cash >= Math.max(450e3, 9 * (15000 - v.profitMonth)),
+      how: (s) => (seats(s) > s.staff.length ? 'You can’t do everything yourself. Open Team › Hiring and hire a researcher: they earn several times the research points you do.' : 'You can’t do everything yourself, and everyone needs a desk. Build a standing desk (Build › Office), then hire a researcher in Team › Hiring.'),
+      go: (s) => (seats(s) > s.staff.length ? 'team:hire' : 'build:office'),
+      highlight: (s) => (seats(s) > s.staff.length ? ['#rail [data-screen="team"]', '[data-act="hire"]'] : shelf('office', 'desk')),
+      done: (s) => s.staff.length >= 2,
+    },
+    // 4. outgrowing the garage: fill it, feel the heat, move out
+    {
+      id: 'fill', act: 'outgrow',
+      title: `Fill the garage: ${RIGS} rigs`,
+      how: 'Add more gaming rigs. More compute trains faster, but watch the Heat meter on the build shelf.',
+      go: 'build:compute',
+      highlight: shelf('compute', 'rig'),
+      progress: (s) => [Math.min(RIGS, count(s, 'rig')), RIGS],
+      done: (s) => count(s, 'rig') >= RIGS || outOfGarage(s),
     },
     {
-      id: 'move', act: 'move',
+      id: 'cool1', act: 'outgrow',
+      title: 'Keep it cool',
+      how: (s, v) => `Too hot: your GPUs make ${kw(v.heat)} of heat and the garage removes ${kw(v.cooling)}, so they slow down. Add a box fan or an AC unit until heat is below cooling. Where it stands doesn't matter.`,
+      go: 'build:cooling',
+      highlight: shelf('cooling', 'fan', 'ac'),
+      when: (s, v) => v.heat > v.cooling && !outOfGarage(s),
+      progress: (s, v) => [Math.min(v.cooling, v.heat), v.heat, `${kw(v.heat)} heat · ${kw(v.cooling)} cooling`],
+      done: (s, v) => v.heat <= v.cooling || outOfGarage(s),
+    },
+    {
+      id: 'move', act: 'outgrow',
       title: 'Move to the Mission',
-      how: 'Press Real estate on the left and move into the Victorian flat: more power, and room for workstations.',
+      how: (s) => AIT.Progress.officeWhy(s) || 'The garage is at its limit, and a Small model needs a hundred times the compute. Press Real estate on the left: the Victorian flat in the Mission has three times the power and room for 4-GPU workstations.',
       go: 'hq:office',
       highlight: ['#tools [data-go="hq:office"]', '[data-key="move"]'],
       progress: (s) => (s.officeLevel ? null : [Math.min(s.cash, D.OFFICES[1].moveCost), D.OFFICES[1].moveCost, s.cash >= D.OFFICES[1].moveCost ? 'you can afford it' : `${money(s.cash)} of ${money(D.OFFICES[1].moveCost)}`]),
       done: (s) => s.officeLevel >= 1,
     },
+    // 5. a real model: workstations, heat, a Small run, launch
     {
-      id: 'compute', act: 'move',
+      id: 'compute', act: 'mission',
       title: (s) => `Get a Small run under ${smallTarget(s)} days`,
-      start: (s, v, st) => (st.smallTarget = s.cash >= 380e3 ? 120 : 180),
+      start: (s, v, st) => (st.smallTarget = pickSmallTarget(s, v)),
       // while the GPUs are throttled by heat, more GPUs won't help: point at cooling instead
       how: (s, v) => (v.heat > v.cooling ? `Your GPUs are overheating and run at ${Math.round(v.thermal * 100)}% speed: ${kw(v.heat)} of heat, ${kw(v.cooling)} of cooling. More GPUs won't help until you add AC units: Build › Cooling.${roomFor(s, 'ac') ? '' : noRoom}` : 'A Small model needs 6,000 PF-days. Fill the flat with 4-GPU workstations until it fits. Keep about $60k for its training data.'),
       go: (s, v) => (v.heat > v.cooling ? 'build:cooling' : 'build:compute'),
@@ -124,12 +233,12 @@
         const d = smallDays(s, v);
         return [Math.min(1, smallTarget(s) / d), 1, d > 3650 ? 'Small: over 10 years' : `Small: ${d.toLocaleString('en-US')} days`];
       },
-      done: (s, v) => smallDays(s, v) <= smallTarget(s) || hasSize(s, 'small'),
+      done: (s, v) => smallDays(s, v) <= smallTarget(s) || hasSize(s, 'small') || budgetSpent(s, v),
     },
     {
-      id: 'cool', act: 'move',
+      id: 'cool', act: 'mission',
       title: 'Keep it cool',
-      how: (s) => 'GPUs turn power into heat. Add AC units until heat is below cooling. It doesn’t matter where they stand.' + (roomFor(s, 'ac') ? '' : noRoom),
+      how: (s) => 'Workstations run hot. Add AC units until heat is below cooling.' + (roomFor(s, 'ac') ? '' : noRoom),
       go: 'build:cooling',
       highlight: shelf('cooling', 'ac'),
       when: (s, v) => v.heat > v.cooling, // only when it is needed
@@ -137,43 +246,28 @@
       done: (s, v) => v.heat <= v.cooling,
     },
     {
-      id: 'small', act: 'small',
+      id: 'small', act: 'mission',
       title: 'Train a Small model',
-      how: 'In Models, pick Small. Licensed data is enough for now. It scores about twice your Tiny.',
+      how: (s) => (s.cash < dataCost() ? `The training data costs ${money(dataCost())} and you have ${money(s.cash)}. Let revenue build up, or sell a GPU you can spare for half its price.` : 'In Models, pick Small. Licensed data is enough for now. It scores about twice your Tiny.'),
       go: 'models:train:small',
       highlight: ['#rail [data-screen="models"]', '[data-act="pick-size"][data-id="small"]', '[data-act="start-train"]'],
       done: (s) => hasSize(s, 'small') || s.models.some((m) => m.cap > 14),
     },
     {
-      id: 'campaign', act: 'small',
-      title: 'Run a hype campaign',
-      how: 'Hype brings subscribers and fades every day. Start the free Cryptic Hype Thread in Market › Marketing.',
-      go: 'market:marketing',
-      highlight: ['#rail [data-screen="market"]', '[data-act="campaign"][data-id="thread"]'],
-      when: (s) => AIT.Progress.has(s, 'tab:market'),
-      done: (s) => s.log.some((e) => e.a === 'campaign'),
-    },
-    {
-      id: 'ship', act: 'small',
+      id: 'ship', act: 'mission',
       title: 'Ship the Small model',
       how: 'Let it train. 8× is fine while you wait. Then deploy it: your score roughly doubles.',
       highlight: ['#speed', '[data-modal="reveal-deploy"]', '[data-act="deploy"]'],
       progress: trainPct,
       done: (s) => !!(s.flagshipId && s.models.find((m) => m.id === s.flagshipId && m.cap > 14)),
     },
-    {
-      id: 'hire', act: 'small',
-      title: 'Hire a researcher',
-      // a researcher costs $7-19k a month: only once the lab can carry it for most of a year
-      when: (s, v) => v.profitMonth >= 15000 || s.cash >= 9 * Math.max(15000, 15000 - v.profitMonth),
-      how: (s) => (seats(s) > s.staff.length ? 'Revenue is growing. Open Team › Hiring and hire a researcher: they earn research points every day.' : 'Everyone needs a desk. Build a standing desk (Build › Office), then hire in Team › Hiring.'),
-      go: (s) => (seats(s) > s.staff.length ? 'team:hire' : 'build:office'),
-      highlight: (s) => (seats(s) > s.staff.length ? ['#rail [data-screen="team"]', '[data-act="hire"]'] : shelf('office', 'desk')),
-      done: (s) => s.staff.length >= 2,
-    },
   ];
-  const INTRO = "Hi, I'm Mira. I've started two AI labs, back when nobody believed in scaling. Your job: turn this garage into a lab and beat the big Bay Area labs to AGI. I'll keep a checklist at the top right. Do what it says, and press Show me whenever you're lost.";
-  const OUTRO = "Your first real model is live and the garage is behind you. From here the milestone card at the top right points the way, and I'll speak up when something needs you. Good luck out there.";
+  const INTRO = [
+    "Hi, I'm Mira Castell. I started two AI labs back when nobody believed in scaling. One of them is still alive, which in this town counts as a success.",
+    'You quit Embarcadero AI the week their chatbot went viral, because you think you can build something better. Everyone in this city thinks that. The difference is who actually ships.',
+    "So let's ship. I'll keep a checklist at the top right, one step at a time. Do what it says, and press Show me whenever you're lost.",
+  ];
+  const OUTRO = "Your first real model is live, and the garage is a story you'll tell at conferences. From here the milestone card at the top right points the way, and I'll speak up when something needs you. Good luck out there.";
 
   // ---------- tips, in priority order ----------
   // Each shows at most once per game. Urgent tips skip the cooldown.
@@ -247,7 +341,7 @@
     },
     {
       id: 'loft',
-      when: (s) => s.officeLevel === 0 && s.models.length > 0 && s.cash > 30000,
+      when: (s) => s.officeLevel === 0 && AIT.Progress.has(s, 'office:next') && s.cash > 30000,
       lines: ["The garage is nearly out of power. The Victorian flat in the Mission has three times the power and room for 4-GPU workstations. Press Real estate on the left."],
       go: 'build',
     },
@@ -379,10 +473,11 @@
   function ensure(s) {
     if (!s.mentor) s.mentor = { step: 0, done: s.day > 60, seen: {}, off: false };
     const st = s.mentor;
-    // v2 is the checklist. Anyone mid-way through the old tutorial restarts the
-    // checklist, which skips what they have already done.
-    if (st.v !== 2) {
-      st.v = 2;
+    // v3 is the five-part checklist. Anyone mid-way through an older tutorial
+    // restarts it, which quietly skips what they have already done.
+    if (st.v !== 3) {
+      st.v = 3;
+      st.act = null;
       if (!st.done) st.step = 0;
       st.intro = st.intro || s.day > 0 || !!st.done;
       st.completed = st.completed || {};
@@ -425,7 +520,7 @@
     const el = m.el;
     el.hidden = false;
     el.classList.toggle('tip', c.kind === 'tip');
-    el.querySelector('.m-label').textContent = c.kind === 'tip' ? 'Tip' : c.kind === 'intro' ? 'Welcome' : 'Checklist done';
+    el.querySelector('.m-label').textContent = c.kind === 'tip' ? 'Tip' : c.kind === 'intro' ? 'Welcome' : c.kind === 'story' ? c.def.label : 'Checklist done';
     m.shown = reduced() ? Infinity : 0;
     m.typeStart = performance.now();
     el.querySelector('.m-text').textContent = reduced() ? c.lines[m.page] : '';
@@ -433,7 +528,7 @@
     const btns = [];
     if (c.kind === 'intro') btns.push('<button class="btn ghost small" data-m="skip">I know the game</button>');
     if (go && c.kind === 'tip') btns.push('<button class="btn small" data-m="show">Show me</button>');
-    btns.push(`<button class="btn primary small" data-m="next">${!lastPage() ? 'Next' : c.kind === 'intro' ? 'Let’s go' : 'Got it'}</button>`);
+    btns.push(`<button class="btn primary small" data-m="next">${!lastPage() ? 'Next' : c.kind === 'intro' || c.kind === 'story' ? 'Let’s go' : 'Got it'}</button>`);
     el.querySelector('.m-actions').innerHTML = btns.join('');
     applyMinimized();
   }
@@ -542,7 +637,7 @@
       .join('');
     const key = [st.step, m.flashAt ? 1 : 0, m.cardMin ? 1 : 0, rows].join('|');
     if (key !== m.cardKey) {
-      card.innerHTML = `<div class="obj-head"><span class="obj-face">${FACE}</span><div class="grow"><div class="eyebrow">Checklist · part ${act.n} of 4</div><div class="obj-act">${esc(act.title)}</div></div><button class="obj-min" data-m="obj-min" aria-label="${m.cardMin ? 'Expand' : 'Collapse'} checklist" aria-expanded="${!m.cardMin}">${m.cardMin ? '+' : '–'}</button></div>
+      card.innerHTML = `<div class="obj-head"><span class="obj-face">${FACE}</span><div class="grow"><div class="eyebrow">Checklist · part ${act.n} of ${PARTS}</div><div class="obj-act">${esc(act.title)}</div></div><button class="obj-min" data-m="obj-min" aria-label="${m.cardMin ? 'Expand' : 'Collapse'} checklist" aria-expanded="${!m.cardMin}">${m.cardMin ? '+' : '–'}</button></div>
         <ol class="obj-list">${rows}</ol>
         ${m.cardMin ? '' : '<button class="obj-link obj-skipall" data-m="skip">Skip the tutorial</button>'}`;
       m.cardKey = key;
@@ -660,8 +755,19 @@
 
     if (active(st) && !st.intro) {
       st.intro = true;
-      open(s, v, 'intro', { lines: [INTRO] });
+      open(s, v, 'intro', { lines: INTRO });
       return;
+    }
+    // a new part of the story: Mira sets the scene. Parts already behind a
+    // loaded save, or skipped past in one go, start quietly.
+    if (cur && st.act !== cur.act) {
+      const fresh = !!st.act && m.caughtUp;
+      st.act = cur.act;
+      const act = ACTS[cur.act];
+      if (fresh && act.story) {
+        open(s, v, 'story', { lines: act.story, label: `Part ${act.n} · ${act.title}` });
+        return;
+      }
     }
     if (st.done && st.finished && !st.outro) {
       st.outro = true;
@@ -686,7 +792,7 @@
       } else if (!hit) continue;
       // during the checklist only urgent tips speak up, and not about what the checklist is explaining
       if ((cooling || active(st)) && !tip.urgent) continue;
-      if (tip.id === 'overheat' && active(st) && ['compute', 'cool'].includes((TUTORIAL[st.step] || {}).id)) continue;
+      if (tip.id === 'overheat' && active(st) && ['fill', 'cool1', 'move', 'compute', 'cool'].includes((TUTORIAL[st.step] || {}).id)) continue;
       st.seen[tip.id] = s.day;
       open(s, v, 'tip', tip);
       return;
@@ -737,7 +843,7 @@
     },
     replay(s) {
       const st = ensure(s);
-      Object.assign(st, { step: 0, done: false, off: false, intro: false, outro: false, finished: false, completed: {}, started: {}, smallTarget: null });
+      Object.assign(st, { step: 0, done: false, off: false, intro: false, outro: false, finished: false, completed: {}, started: {}, smallTarget: null, act: null });
       AIT.Mentor.reset();
     },
     TUTORIAL,

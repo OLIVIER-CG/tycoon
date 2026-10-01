@@ -369,7 +369,7 @@
     v.boardAt = boardAt;
     v.comfortAt = comfortAt;
 
-    const team = teamTotals(s.staff, s.day, v.seatInfo);
+    const team = teamTotals(s.staff, s.day, v.seatInfo, null, s.officeLevel === 0);
     const payroll = s.staff.reduce((a, p) => a + p.salary, 0);
     Object.assign(v, { R: team.R, E: team.E, G: team.G, S: team.S, payroll, staffCount: s.staff.length });
 
@@ -455,7 +455,9 @@
 
   // ---------- what the team adds ----------
 
-  function teamTotals(staff, day, seatInfo, newSeat) {
+  // garage: in the garage the founder also runs the company, so only half
+  // their day goes to research
+  function teamTotals(staff, day, seatInfo, newSeat, garage) {
     const t = { R: 0, E: 0, G: 0, S: 0, rp: 0 };
     for (const p of staff) {
       if (p.trainUntil > day) continue;
@@ -464,7 +466,7 @@
       const seat = (seatInfo && seatInfo.get(p.id)) || newSeat || { board: 0 };
       if (p.role === 'researcher') {
         t.R += k;
-        t.rp += Math.pow(p.skill, 1.25) * 0.3 * D.TUNING.rpRate * prod * (1 + seat.board);
+        t.rp += Math.pow(p.skill, 1.25) * 0.3 * D.TUNING.rpRate * prod * (1 + seat.board) * (p.founder && garage ? 0.5 : 1);
       } else if (p.role === 'engineer') t.E += k;
       else if (p.role === 'growth') t.G += k;
       else t.S += k;
@@ -487,11 +489,11 @@
   // What one person adds: pass { remove: staffId } for someone on the team,
   // or { add: candidate } for someone you might hire.
   function impact(s, v, change) {
-    const base = teamEffects(teamTotals(s.staff, s.day, v.seatInfo), v.tech);
+    const base = teamEffects(teamTotals(s.staff, s.day, v.seatInfo, null, s.officeLevel === 0), v.tech);
     let staff = s.staff;
     if (change.remove) staff = staff.filter((p) => p.id !== change.remove);
     if (change.add) staff = staff.concat([{ ...change.add, morale: 70, trainUntil: 0 }]);
-    const alt = teamEffects(teamTotals(staff, s.day, v.seatInfo, v.newHireSeat), v.tech);
+    const alt = teamEffects(teamTotals(staff, s.day, v.seatInfo, v.newHireSeat, s.officeLevel === 0), v.tech);
     const [a, b] = change.remove ? [base, alt] : [alt, base];
     return {
       rp: (a.rp - b.rp) * v.rpMult,
