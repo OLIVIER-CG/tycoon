@@ -59,9 +59,9 @@ and rent hikes all show up.
 The game looks and plays like a PC tycoon game. It opens on a **title screen**
 (Continue, New game, Load game, Options, Credits) over your office. In the
 game the office fills the screen and the chrome sits on top of it. The
-chrome is kept quiet on purpose: dark and flat, with orange only for what is
-selected or what to press next, and red or amber only when something is
-wrong. Anything that isn't needed every minute lives in a window or under the
+chrome is kept quiet on purpose: flat and the deep blue of the city at
+night, with neon violet only for what is selected or what to press next, cyan
+for what's new, and red or amber only when something is wrong. Anything that isn't needed every minute lives in a window or under the
 bell.
 
 - **Top left:** the menu, the date, pause and three speeds, then a round
@@ -81,7 +81,7 @@ bell.
   and a banner only for real trouble. Toasts stack at most two, and several
   achievements at once share one toast.
 
-**Windows** open in the middle with a slate title bar, orange tabs, a `?`
+**Windows** open in the middle with a night-blue title bar, light tabs, a `?`
 that explains the window and four key numbers along the bottom:
 
 | Window | Tabs |

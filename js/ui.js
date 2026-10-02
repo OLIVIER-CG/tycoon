@@ -180,7 +180,7 @@
     return need;
   })();
   const ROLE_VAR = { researcher: 'var(--role-res)', engineer: 'var(--role-eng)', growth: 'var(--role-grw)', safety: 'var(--role-saf)' };
-  const roleColor = (p) => (p.founder ? 'var(--bridge)' : ROLE_VAR[p.role]);
+  const roleColor = (p) => (p.founder ? 'var(--brand)' : ROLE_VAR[p.role]);
 
   const svg = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const ICON = {
@@ -389,7 +389,7 @@
             : `<div class="small muted">Nothing is training. Idle GPUs only earn a trickle of research.</div>`;
         })();
     const raceRows = [
-      { name: s.company, cap: fm ? fm.cap : 0, color: 'var(--bridge)' },
+      { name: s.company, cap: fm ? fm.cap : 0, color: 'var(--brand)' },
       ...(top ? [{ name: Sim.RIVAL_BY_ID[top.id].name, cap: top.cap, color: Sim.RIVAL_BY_ID[top.id].color }] : []),
     ];
     const hist = s.history.slice(-24);
@@ -791,7 +791,7 @@
       const d = rate > 0 ? Math.ceil(size.pfdays / rate) : Infinity;
       const tooSlow = d > 365;
       const compare = [
-        { name: 'This run', cap: exp, color: 'var(--bridge)', txt: `${(exp * 0.96).toFixed(0)}–${Math.min(size.id === 'agi' ? 100 : 99, exp * 1.04).toFixed(0)}` },
+        { name: 'This run', cap: exp, color: 'var(--brand)', txt: `${(exp * 0.96).toFixed(0)}–${Math.min(size.id === 'agi' ? 100 : 99, exp * 1.04).toFixed(0)}` },
         ...(fm ? [{ name: 'Your model', cap: fm.cap, color: 'var(--ink-3)', txt: fm.cap.toFixed(1) }] : []),
         ...(top ? [{ name: 'Top rival', cap: top.cap, color: Sim.RIVAL_BY_ID[top.id].color, txt: top.cap.toFixed(1) }] : []),
       ];
@@ -1103,7 +1103,7 @@
     const fm = v.flagship;
     const bestModel = s.models.slice().sort((a, b) => b.cap - a.cap)[0];
     const rows = [
-      { name: s.company, model: bestModel ? bestModel.name : 'no model yet', cap: bestModel ? bestModel.cap : 0, color: 'var(--bridge)', you: true },
+      { name: s.company, model: bestModel ? bestModel.name : 'no model yet', cap: bestModel ? bestModel.cap : 0, color: 'var(--brand)', you: true },
       ...s.rivals.map((r) => {
         const d = Sim.RIVAL_BY_ID[r.id];
         return { name: d.name, model: `${d.model}-${r.version}`, cap: r.cap, color: d.color, blurb: d.blurb };
@@ -1672,7 +1672,7 @@
     const v = Sim.derive(s);
     const rivals = s.rivals.map((r) => ({ name: Sim.RIVAL_BY_ID[r.id].name, cap: r.cap, color: Sim.RIVAL_BY_ID[r.id].color }));
     const top = rivals.reduce((a, r) => (r.cap > a.cap ? r : a), rivals[0]);
-    const rows = rivals.concat([{ name: s.company, cap: m.cap, color: 'var(--bridge)', you: true }]).sort((a, b) => b.cap - a.cap);
+    const rows = rivals.concat([{ name: s.company, cap: m.cap, color: 'var(--brand)', you: true }]).sort((a, b) => b.cap - a.cap);
     const rank = rows.findIndex((r) => r.you) + 1;
     const ratio = m.cap / top.cap;
     const tier = m.cap > top.cap ? 'sota' : ratio >= 0.9 ? 'close' : ratio >= 0.6 ? 'mid' : 'low';
@@ -1712,30 +1712,31 @@
   // ---------- title screen, menu, saves, options ----------
   const LOGO = `<svg class="logo" viewBox="0 0 720 370" role="img" aria-label="AI Boom Tycoon">
     <defs>
-      <linearGradient id="lg-gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe46b"/><stop offset=".55" stop-color="#ffb52a"/><stop offset="1" stop-color="#f2661c"/></linearGradient>
-      <linearGradient id="lg-teal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ff8ef"/><stop offset="1" stop-color="#19b0c4"/></linearGradient>
-      <linearGradient id="lg-arrow" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#1aa7b8"/><stop offset="1" stop-color="#5fe6e0"/></linearGradient>
+      <linearGradient id="lg-neon" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3efff"/><stop offset=".5" stop-color="#b6a3ff"/><stop offset="1" stop-color="#7357f6"/></linearGradient>
+      <linearGradient id="lg-fog" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#b9c2e8"/></linearGradient>
+      <linearGradient id="lg-arrow" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#7357f6"/><stop offset="1" stop-color="#c9bcff"/></linearGradient>
+      <linearGradient id="lg-bolt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#57d3ee"/></linearGradient>
     </defs>
     <g fill="none" stroke="#c7432a" stroke-width="5" stroke-linecap="round" opacity=".9">
       <path d="M20 250 Q95 150 150 70"/><path d="M150 70 Q360 250 570 70"/><path d="M570 70 Q625 150 700 250"/>
       <path d="M205 118v70M260 152v60M315 170v60M405 170v60M460 152v60M515 118v70" stroke-width="2.5"/>
     </g>
-    <g fill="#d94b2b" stroke="#14202c" stroke-width="4">
+    <g fill="#d94b2b" stroke="#141a33" stroke-width="4">
       <path d="M138 64h24v200h-24z"/><path d="M558 64h24v200h-24z"/>
       <path d="M132 64h36v10h-36zM132 118h36v8h-36zM132 170h36v8h-36zM552 64h36v10h-36zM552 118h36v8h-36zM552 170h36v8h-36z"/>
     </g>
-    <g stroke="#14202c" stroke-width="5" stroke-linejoin="round">
+    <g stroke="#141a33" stroke-width="5" stroke-linejoin="round">
       <path d="M318 96L232 26l-12 30-26-8 24 60z" fill="url(#lg-arrow)"/>
       <path d="M402 96l86-70 12 30 26-8-24 60z" fill="url(#lg-arrow)"/>
-      <rect x="318" y="30" width="84" height="84" rx="14" fill="#17303f"/>
-      <path d="M330 22v10M346 22v10M362 22v10M378 22v10M394 22v10M330 112v10M346 112v10M362 112v10M378 112v10M394 112v10M310 44h10M310 60h10M310 76h10M310 92h10M400 44h10M400 60h10M400 76h10M400 92h10" stroke="#5fe6e0" stroke-width="4" stroke-linecap="round"/>
-      <path d="M366 44l-20 32h15l-6 26 22-35h-15z" fill="url(#lg-gold)" stroke-width="3.5"/>
+      <rect x="318" y="30" width="84" height="84" rx="14" fill="#1d2448"/>
+      <path d="M330 22v10M346 22v10M362 22v10M378 22v10M394 22v10M330 112v10M346 112v10M362 112v10M378 112v10M394 112v10M310 44h10M310 60h10M310 76h10M310 92h10M400 44h10M400 60h10M400 76h10M400 92h10" stroke="#57d3ee" stroke-width="4" stroke-linecap="round"/>
+      <path d="M366 44l-20 32h15l-6 26 22-35h-15z" fill="url(#lg-bolt)" stroke-width="3.5"/>
     </g>
     <g font-family="Lilita One, Arial Black, Impact, sans-serif" text-anchor="middle" stroke-linejoin="round">
-      <text x="380" y="342" font-size="100" fill="#0c141c" stroke="#0c141c" stroke-width="16" transform="translate(0 9)">TYCOON</text>
-      <text x="380" y="342" font-size="100" fill="url(#lg-teal)" stroke="#14202c" stroke-width="14" paint-order="stroke">TYCOON</text>
-      <text x="360" y="252" font-size="152" fill="#0c141c" stroke="#0c141c" stroke-width="18" transform="translate(0 11)">AI BOOM</text>
-      <text x="360" y="252" font-size="152" fill="url(#lg-gold)" stroke="#14202c" stroke-width="16" paint-order="stroke">AI BOOM</text>
+      <text x="380" y="342" font-size="100" fill="#0b0f22" stroke="#0b0f22" stroke-width="16" transform="translate(0 9)">TYCOON</text>
+      <text x="380" y="342" font-size="100" fill="url(#lg-fog)" stroke="#141a33" stroke-width="14" paint-order="stroke">TYCOON</text>
+      <text x="360" y="252" font-size="152" fill="#0b0f22" stroke="#0b0f22" stroke-width="18" transform="translate(0 11)">AI BOOM</text>
+      <text x="360" y="252" font-size="152" fill="url(#lg-neon)" stroke="#141a33" stroke-width="16" paint-order="stroke">AI BOOM</text>
     </g>
     <g fill="#fff">
       <path d="M118 150l4 11 11 4-11 4-4 11-4-11-11-4 11-4z"/><path d="M612 120l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/><path d="M548 300l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/><path d="M250 290l2.5 6 6 2.5-6 2.5-2.5 6-2.5-6-6-2.5 6-2.5z"/>
