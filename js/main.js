@@ -9,6 +9,7 @@
     speed: 1,
     lastSpeed: 1,
     setSpeed(n) {
+      if (this.s && this.s.runway && n > 1) n = 1; // Runway's clock never fast-forwards
       if (n > 0) this.lastSpeed = n;
       this.speed = n;
     },
@@ -81,7 +82,7 @@
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     const s = game.s;
-    const blocked = UI.isBlocking() || s.events.length > 0 || (s.over && !s.over.sandbox);
+    const blocked = UI.isBlocking() || s.events.length > 0 || (s.over && !s.over.sandbox) || !!(s.runway && s.runway.meeting);
     const running = !blocked && game.speed > 0;
     // real play time: only while the page is open and visible, and the run is not over
     if (!document.hidden && !(s.over && !s.over.sandbox)) s.playMs = (s.playMs || 0) + dt * 1000;

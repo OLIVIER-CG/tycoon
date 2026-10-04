@@ -39,6 +39,13 @@
           <button data-speed="3" aria-label="Fastest" title="8 days per second (3)"><svg viewBox="0 0 30 24" aria-hidden="true"><path d="M1 6l8 6-8 6zM10 6l8 6-8 6zM19 6l8 6-8 6z" fill="currentColor"/></svg></button>
         </div>
       </div>
+      <div id="quota" class="quota-bar" hidden role="group" aria-label="This quarter's quota">
+        <span id="q-name" class="q-name"></span>
+        <div class="q-track" aria-hidden="true"><i id="q-proj"></i><i id="q-fill"></i></div>
+        <span id="q-num" class="q-num"></span>
+        <span id="q-days" class="q-days"></span>
+        <button id="q-bell" class="q-bell" data-act="bell" hidden title="End the quarter now: the quota is met">Ring the bell</button>
+      </div>
       <nav id="rail" class="win-buttons" aria-label="Windows"></nav>
     </header>
 

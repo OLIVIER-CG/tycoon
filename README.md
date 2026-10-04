@@ -32,6 +32,22 @@ challenge gives everyone the same seed for the day (same candidates, events and
 rival moves) and ranks results on a shared leaderboard. Sandbox starts you with
 $10M, no bankruptcy and rivals who never quite reach AGI.
 
+**Runway** (new, from the title screen or New game) is a 20-minute run against
+a board of directors, inspired by the rising quotas of Broke Street. The game
+is the same, but the clock runs at one day a second and never fast-forwards
+(you can still pause), and every 91-day quarter has a revenue quota: $6k,
+$20k, $80k, $200k, $600k, $1.2M, $2M, then $3.5M in Q8. A bar beside the date
+shows revenue booked this quarter, a projection that turns amber when you fall
+behind, and the days left. Once you pass the quota you can ring the bell to end
+the quarter early. At each board meeting you see how the quarter went and
+what comes next. Miss a quota and the board forces a down round (5% of your
+stake); miss two and you are fired. Ending a quarter with negative cash also
+ends the run. Clear Q8 to take the company public, or stay private for endless
+quarters whose quotas grow 1.6 times each. The early quotas are tuned so a
+careful player who starts training within about 20 seconds clears Q1 to Q4.
+Mira explains the rules instead of running the checklist. Perks, favors and
+hot windows come next.
+
 ## The city
 
 Each move is a new chapter, a new view out of the windows and room for

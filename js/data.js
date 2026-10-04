@@ -218,6 +218,16 @@
     { id: 'robots', name: 'Robotics Platform', tech: 'robotics', launch: 400e6, market: 0.004, price: 4000, minPrice: 1000, maxPrice: 12000, infer: 60, desc: 'Your model drives warehouse and home robots, licensed per robot per month.' },
   ];
 
+  // Runway: a short roguelike run of 91-day quarters on a fixed clock. Each
+  // quarter the board sets a revenue quota; miss it twice and you are out.
+  const RUNWAY = {
+    quarterDays: 91,
+    quotas: [6e3, 20e3, 80e3, 200e3, 600e3, 1.2e6, 2e6, 3.5e6], // Q1 to Q8 (the IPO), then endless
+    endlessGrowth: 1.6,
+    strikes: 2, // misses before the board fires you
+    downRound: 0.05, // share of your stake a down round costs after a miss
+  };
+
   const DIFFICULTY = {
     relaxed: { name: 'Relaxed', cash: 100000, pace: 0.85, desc: 'Rivals move slower and you start with more money.' },
     normal: { name: 'Normal', cash: 75000, pace: 1, desc: 'The race as designed.' },
@@ -282,7 +292,7 @@
 
   AIT.DATA = {
     START_DATE, TUNING, OFFICES, ITEMS, ITEM_CATS, ROLES, TECHS, MODEL_SIZES, DATA_SOURCES,
-    RIVALS, CAMPAIGNS, CAMPAIGN_SLOTS, ROUNDS, INVESTORS, GOALS, FIRST_NAMES, LAST_NAMES, PRODUCTS, DIFFICULTY, ACHIEVEMENTS,
+    RIVALS, CAMPAIGNS, CAMPAIGN_SLOTS, ROUNDS, INVESTORS, GOALS, FIRST_NAMES, LAST_NAMES, PRODUCTS, DIFFICULTY, ACHIEVEMENTS, RUNWAY,
     TECH_BY_ID: Object.fromEntries(TECHS.map((t) => [t.id, t])),
     SIZE_BY_ID: Object.fromEntries(MODEL_SIZES.map((m) => [m.id, m])),
   };

@@ -267,6 +267,11 @@
     'You quit Embarcadero AI the week their chatbot went viral, because you think you can build something better. Everyone in this city thinks that. The difference is who actually ships.',
     "So let's ship. I'll keep a checklist at the top right, one step at a time. Do what it says, and press Show me whenever you're lost.",
   ];
+  const RUNWAY_INTRO = [
+    "This is Runway. Same garage, same city, but now a board sets a revenue quota every quarter, and the clock never fast-forwards. You can pause whenever you like.",
+    'A quarter is 91 days. The bar at the top shows revenue booked against the quota. Pass it and you can ring the bell to end the quarter early, or keep growing.',
+    "Miss a quota and the board forces a down round. Miss two and you're out. Clear eight quarters and you can take the company public.",
+  ];
   const OUTRO = "Your first real model is live, and the garage is a story you'll tell at conferences. From here the milestone card at the top right points the way, and I'll speak up when something needs you. Good luck out there.";
 
   // ---------- tips, in priority order ----------
@@ -275,7 +280,7 @@
     {
       id: 'broke', urgent: true,
       when: (s) => s.stats.negDays > 0,
-      lines: ["You're out of cash. You have 90 days before the company folds. Sell hardware you don't need, let someone go, or raise money in Money."],
+      lines: (s) => [s.runway ? "You're out of cash. If you're still below zero when the quarter ends, the board shuts you down. Sell hardware you don't need, let someone go, or raise money in Money." : "You're out of cash. You have 90 days before the company folds. Sell hardware you don't need, let someone go, or raise money in Money."],
       go: 'finance',
     },
     {
@@ -471,7 +476,8 @@
   const sfx = (n) => AIT.Sound && AIT.Sound.play(n);
 
   function ensure(s) {
-    if (!s.mentor) s.mentor = { step: 0, done: s.day > 60, seen: {}, off: false };
+    // Runway has no checklist: Mira explains the rules once instead
+    if (!s.mentor) s.mentor = { step: 0, done: s.day > 60 || s.mode === 'runway', seen: {}, off: false };
     const st = s.mentor;
     // v3 is the five-part checklist. Anyone mid-way through an older tutorial
     // restarts it, which quietly skips what they have already done.
@@ -753,6 +759,11 @@
     else setHighlight(cur && cur.highlight ? resolve(cur.highlight, s, v) : []);
     if (m.cur || blocked || st.off || over) return;
 
+    if (s.runway && !st.runwayIntro) {
+      st.runwayIntro = true;
+      open(s, v, 'intro', { lines: RUNWAY_INTRO });
+      return;
+    }
     if (active(st) && !st.intro) {
       st.intro = true;
       open(s, v, 'intro', { lines: INTRO });

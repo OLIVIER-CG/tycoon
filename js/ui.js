@@ -1151,7 +1151,29 @@
     }
   }
 
+  // Runway's quota bar: booked revenue against the quota, where the quarter is heading, and the bell
+  function renderQuota(s, v) {
+    const q = Sim.quarterView(s, v);
+    document.body.classList.toggle('runway', !!q);
+    const el = $('quota');
+    if (el.hidden !== !q) el.hidden = !q;
+    if (!q) return;
+    const cls = 'quota-bar' + (q.hit ? ' hit' : q.onPace ? '' : ' behind');
+    if (el.className !== cls) el.className = cls;
+    $('q-name').textContent = 'Q' + q.q;
+    $('q-fill').style.width = Math.min(100, (q.booked / q.quota) * 100).toFixed(1) + '%';
+    $('q-proj').style.width = Math.min(100, (q.projected / q.quota) * 100).toFixed(1) + '%';
+    $('q-num').textContent = `${money(q.booked)} / ${money(q.quota)}`;
+    const days = `${q.left}d<span class="q-left"> left</span>`;
+    if ($('q-days').innerHTML !== days) $('q-days').innerHTML = days;
+    const bell = $('q-bell');
+    if (bell.hidden !== !q.hit) bell.hidden = !q.hit;
+    const tip = `Q${q.q}: ${money(q.booked)} booked of a ${money(q.quota)} quota, ${q.left} days left. ${q.hit ? 'Quota met: ring the bell to end the quarter now, or keep growing.' : q.onPace ? `On pace for about ${money(q.projected)}.` : `Behind pace: heading for about ${money(q.projected)}.`} Strikes: ${q.strikes} of ${D.RUNWAY.strikes}.`;
+    if (el.title !== tip) el.title = tip;
+  }
+
   function renderTop(s, v) {
+    renderQuota(s, v);
     set('co-name', esc(s.company));
     set('date', fmt.date(s.day).toUpperCase());
     document.querySelectorAll('#speed button').forEach((b) => b.classList.toggle('on', Number(b.dataset.speed) === G().speed));
@@ -1281,7 +1303,7 @@
   // ---------- over the world: goal tracker, warnings, notifications ----------
   function renderAdvisor(s, v, list) {
     const tutorial = AIT.Mentor.tutorialActive(s);
-    if (tutorial || (isPhone() && (ui.trayOpen || AIT.Render.tool))) return set('advisor', '');
+    if (tutorial || s.runway || (isPhone() && (ui.trayOpen || AIT.Render.tool))) return set('advisor', '');
     // just the next milestone; everything else that needs you is under the bell
     const goal = D.GOALS.find((g) => !s.goals[g.id]);
     const el = $('advisor');
@@ -1475,9 +1497,10 @@
   const ENDING_TITLES = { aligned: 'AGI, done right', uneasy: 'AGI, with questions', reckless: 'AGI, at any cost' };
   const dailySeed = (d = new Date()) => d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
   const dailyLabel = (seed) => (seed ? String(seed).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') : '');
-  const modeLabel = (s) => [s.mode === 'daily' ? `Daily challenge ${dailyLabel(s.seed)}` : s.mode === 'sandbox' ? 'Sandbox' : null, s.mode === 'daily' ? null : D.DIFFICULTY[s.difficulty || 'normal'].name].filter(Boolean).join(' · ');
+  const modeLabel = (s) => (s.mode === 'runway' ? 'Runway' : [s.mode === 'daily' ? `Daily challenge ${dailyLabel(s.seed)}` : s.mode === 'sandbox' ? 'Sandbox' : null, s.mode === 'daily' ? null : D.DIFFICULTY[s.difficulty || 'normal'].name].filter(Boolean).join(' · '));
 
   function showOver(s) {
+    if (s.runway) return showRunwayOver(s);
     const v = Sim.derive(s);
     const win = s.over.win;
     const title = win ? ENDING_TITLES[s.over.ending] || 'You reached AGI first' : /money/.test(s.over.text) ? 'Out of money' : 'Beaten to AGI';
@@ -1495,6 +1518,80 @@
       false,
     );
     if (s.mode === 'daily') submitDaily(s, v).then(() => showDailyBoard(s));
+  }
+
+  // ---------- Runway: the board meeting and the end of a run ----------
+  // one line from a board member, by outcome; picked by quarter so a reload shows the same one
+  const BOARD_LINES = {
+    hit: ['"Good quarter. Do it again, bigger."', '"The deck said hockey stick. This looks like one."', '"Our LPs will be pleased. Briefly."', '"Fine. Now double it."'],
+    miss: ['"We believe in you. Our lawyers believe in the term sheet."', '"Missing a number is a choice. Make a different one."', '"The down round is not personal. It is in the contract."'],
+    fired: ['"We are grateful for everything you built. Security will walk you out."'],
+    broke: ['"There is no quarter if there is no cash."'],
+    ipo: ['"Bankers are on the line. The roadshow starts Monday, if you want it."'],
+  };
+  const boardLine = (m) => {
+    const list = BOARD_LINES[m.end || (m.ipo ? 'ipo' : m.hit ? 'hit' : 'miss')];
+    return list.at(m.q % list.length);
+  };
+  // the run so far: one chip per quarter, beaten, missed or still to come
+  function quarterStrip(s) {
+    const r = s.runway, total = Math.max(D.RUNWAY.quotas.length, r.history.length);
+    const chips = [];
+    for (let q = 1; q <= total; q++) {
+      const h = r.history.find((x) => x.q === q);
+      chips.push(`<span class="qchip ${h ? (h.hit ? 'hit' : 'miss') : q === r.q && !s.over ? 'now' : ''}" title="Q${q}: ${h ? `${money(h.booked)} of ${money(h.quota)}` : `quota ${money(Sim.quotaFor(q))}`}">Q${q}</span>`);
+    }
+    return `<div class="qstrip">${chips.join('')}</div>`;
+  }
+  function showMeeting(s) {
+    const r = s.runway, m = r.meeting, RWD = D.RUNWAY;
+    const pctOf = Math.round((m.booked / m.quota) * 100);
+    const title = m.end === 'fired' ? 'The board lets you go' : m.end === 'broke' ? 'Out of cash' : m.ipo ? 'Ready to go public' : m.hit ? `Q${m.q}: quota beaten` : `Q${m.q}: quota missed`;
+    const how = m.how === 'bell' ? `You rang the bell with ${m.left} days to spare.` : `The quarter ran its full ${RWD.quarterDays} days.`;
+    const strikes = m.end ? '' : m.hit ? (m.strikes ? `Strikes: ${m.strikes} of ${RWD.strikes}. One more miss and the board replaces you.` : 'No strikes. The board is happy, for now.') : `Strike ${m.strikes} of ${RWD.strikes}. The board forced a down round, so your stake is now ${fmt.pct(m.equity, 1)}. One more miss and you are out.`;
+    const next = !m.end && !m.ipo ? `<div class="meet-next"><span class="eyebrow">Next</span><b>Q${r.q} quota: ${money(Sim.quotaFor(r.q))}</b><span class="small muted">in ${RWD.quarterDays} days</span></div>` : '';
+    const btns = m.end
+      ? '<button class="btn primary" data-modal="meeting">See how the run went</button>'
+      : m.ipo
+        ? `<button class="btn" data-modal="meeting" data-id="endless">Stay private: endless quarters</button><button class="btn primary" data-modal="meeting" data-id="ipo">Take ${esc(s.company)} public</button>`
+        : `<button class="btn primary" data-modal="meeting">Start Q${r.q}</button>`;
+    openModal(
+      `<div class="eyebrow">${fmt.date(s.day)} · Q${m.q} board meeting</div>
+      <h2 class="chapter-title">${title}</h2>
+      <div class="meet-result ${m.hit ? 'hit' : 'miss'}">
+        <div class="row between"><span class="mono meet-num">${money(m.booked)}</span><span class="small muted">of a ${money(m.quota)} quota · ${pctOf}%</span></div>
+        ${bar(Math.min(1, m.booked / m.quota), m.hit ? 'ok' : 'bad')}
+        <div class="small muted">${how}</div>
+      </div>
+      <p class="meet-quote">${boardLine(m)}</p>
+      ${strikes ? `<p class="small">${strikes}</p>` : ''}
+      ${m.ipo ? `<p class="small">You cleared all ${RWD.quotas.length} quarters. Go public now and the run ends here with your score, or stay private and keep going with quotas that grow ${RWD.endlessGrowth} times a quarter.</p>` : ''}
+      ${quarterStrip(s)}
+      ${next}
+      <div class="row gap">${btns}</div>`,
+      'meeting ' + (m.hit ? 'good' : 'bad'),
+      false,
+    );
+    sfx(m.hit ? 'chapter' : 'error');
+    if (m.hit && !m.end) AIT.Render.celebrate();
+  }
+  function showRunwayOver(s) {
+    const v = Sim.derive(s);
+    const r = s.runway;
+    const title = s.over.ending === 'ipo' ? 'You took it public' : /cash/.test(s.over.text) ? 'Out of cash' : 'Fired by the board';
+    openModal(
+      `<div class="eyebrow">${fmt.date(s.day)} · Runway</div>
+      <h2 class="chapter-title">${title}</h2>
+      <p>${esc(s.over.text)}</p>
+      ${quarterStrip(s)}
+      <div class="kpis three">
+        ${kpi('Quarters cleared', `${Sim.runwayCleared(s)} of ${r.history.length}`)}${kpi('Played', fmt.dur(s.playMs))}${kpi('Best score', v.bestCap.toFixed(1))}
+        ${kpi('Subscribers', fmt.num(s.subs))}${kpi('Valuation', money(v.valuation))}${kpi('Your stake', money(v.netWorth))}
+      </div>
+      <div class="row gap wrap"><button class="btn" data-modal="send-run">Send this run to Claude</button><button class="btn primary" data-modal="newgame">New game</button></div>`,
+      'over ' + (s.over.win ? 'good' : 'bad'),
+      false,
+    );
   }
 
   const DAILY_KEY = 'ai-boom-tycoon-daily';
@@ -1628,6 +1725,7 @@
   function newGameNote() {
     if (ui.ng.mode === 'daily') return `Today's seed is ${dailyLabel(dailySeed())}: everyone gets the same candidates, events and rival moves. Normal difficulty. Your result goes on today's leaderboard.`;
     if (ui.ng.mode === 'sandbox') return 'Start with $10M, no bankruptcy, and rivals that never quite reach AGI. Achievements are off.';
+    if (ui.ng.mode === 'runway') return `About 20 minutes: ${D.RUNWAY.quotas.length} quarters of ${D.RUNWAY.quarterDays} days on a clock that never fast-forwards. Beat the board's revenue quota every quarter. Miss twice and you're fired; clear them all and you go public. Normal difficulty.`;
     return D.DIFFICULTY[ui.ng.difficulty].desc;
   }
   function showNewGame(canContinue) {
@@ -1639,7 +1737,7 @@
       <p>${typeof ch.text === 'function' ? ch.text({ rounds: [], subs: 0 }) : ch.text}</p>
       <div class="field"><label for="ng-company">Name your company</label><input id="ng-company" maxlength="24" value="Fogline Labs" autocomplete="off"></div>
       <div class="field"><label for="ng-family">Name your models</label><input id="ng-family" maxlength="12" value="Karl" autocomplete="off"></div>
-      <div class="field"><span class="label">Game</span><div class="seg wide" role="group" aria-label="Game mode">${[['standard', 'Standard'], ['daily', 'Daily'], ['sandbox', 'Sandbox']].map(([id, n]) => `<button class="${ui.ng.mode === id ? 'on' : ''}" data-modal="ng-mode" data-id="${id}">${n}</button>`).join('')}</div></div>
+      <div class="field"><span class="label">Game</span><div class="seg wide" role="group" aria-label="Game mode">${[['standard', 'Standard'], ['runway', 'Runway'], ['daily', 'Daily'], ['sandbox', 'Sandbox']].map(([id, n]) => `<button class="${ui.ng.mode === id ? 'on' : ''}" data-modal="ng-mode" data-id="${id}">${n}</button>`).join('')}</div></div>
       <div class="field" id="ng-diff-field"${ui.ng.mode === 'standard' ? '' : ' hidden'}><span class="label">Difficulty</span><div class="seg wide" role="group" aria-label="Difficulty">${Object.entries(D.DIFFICULTY).map(([id, d]) => `<button class="${ui.ng.difficulty === id ? 'on' : ''}" data-modal="ng-diff" data-id="${id}">${d.name}</button>`).join('')}</div></div>
       <p class="note" id="ng-note">${newGameNote()}</p>
       <p class="note">Your mentor, Mira, will show you around once you start.</p>
@@ -1815,6 +1913,7 @@
       body = `<nav class="title-menu" aria-label="Main menu">
         <button class="menu-item" data-title="continue"${disabled(!last)}>Continue${last ? `<span class="sub">${esc(last.company)} · ${esc(last.office)} · ${fmt.date(last.day)}</span>` : ''}</button>
         <button class="menu-item" data-title="new">New game</button>
+        <button class="menu-item" data-title="runway">Runway<span class="sub">New: a 20-minute run against the board</span></button>
         <button class="menu-item" data-title="load"${disabled(!last)}>Load game</button>
         <button class="menu-item" data-title="options">Options</button>
         <button class="menu-item" data-title="credits">Credits</button>
@@ -1933,6 +2032,9 @@
         ui.trayOpen = !ui.trayOpen || !!(AIT.Render.tool && AIT.Render.tool.mode === 'sell');
         ui.winOpen = false;
         if (!ui.trayOpen || (AIT.Render.tool && AIT.Render.tool.mode === 'sell')) AIT.Render.setTool(null);
+        break;
+      case 'bell':
+        if (result(A.ringBell(s), false)) sfx('coin');
         break;
       case 'close-tray':
         ui.trayOpen = false;
@@ -2255,7 +2357,7 @@
     window.addEventListener('pointerup', release);
     window.addEventListener('pointercancel', release);
 
-    for (const id of ['dock', 'tools', 'toolbar', 'inspect', 'advisor', 'banner', 'notif-panel', 'hud-bottom']) $(id).addEventListener('click', clickAct);
+    for (const id of ['dock', 'tools', 'toolbar', 'inspect', 'advisor', 'banner', 'notif-panel', 'hud-bottom', 'quota']) $(id).addEventListener('click', clickAct);
     $('notif-panel').addEventListener('click', (e) => {
       if (e.target.closest('[data-notif="close"]')) {
         ui.notifOpen = false;
@@ -2302,7 +2404,13 @@
       if (what === 'continue') {
         const last = AIT.Saves.latest();
         if (last) loadSave(last.id);
-      } else if (what === 'new') showNewGame(true);
+      } else if (what === 'new') {
+        if (ui.ng.mode === 'runway') ui.ng.mode = 'standard';
+        showNewGame(true);
+      } else if (what === 'runway') {
+        ui.ng.mode = 'runway';
+        showNewGame(true);
+      }
       else if (what === 'load' || what === 'options' || what === 'credits') {
         ui.confirm = null;
         titlePanel(what);
@@ -2336,6 +2444,10 @@
       if (what === 'close') closeModal();
       else if (what === 'choice') {
         Sim.resolveEvent(g.s, Number(b.dataset.i));
+        closeModal();
+        renderPanel(true);
+      } else if (what === 'meeting') {
+        Sim.actions.closeMeeting(g.s, b.dataset.id);
         closeModal();
         renderPanel(true);
       } else if (what === 'ng-mode' || what === 'ng-diff') {
@@ -2439,7 +2551,7 @@
           return;
         }
         if (ui.modal) {
-          if (!String(ui.modal).startsWith('event') && !String(ui.modal).startsWith('over')) closeModal();
+          if (!/^(event|over|meeting)/.test(String(ui.modal))) closeModal();
           return;
         }
         if (AIT.Render.tool) AIT.Render.setTool(null);
@@ -2466,7 +2578,8 @@
         const m = s.models.find((x) => x.id === s.reveal);
         s.reveal = null;
         if (m) showReveal(s, m);
-      } else if (ui.chapters.length) showChapter(s, ui.chapters.shift());
+      } else if (s.runway && s.runway.meeting) showMeeting(s);
+      else if (ui.chapters.length) showChapter(s, ui.chapters.shift());
       else if (s.events.length) showEvent(s);
       else if (s.techs.agi_theory && !s.flags.agiPrompted && !s.over) {
         s.flags.agiPrompted = true;

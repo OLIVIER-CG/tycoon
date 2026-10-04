@@ -146,7 +146,7 @@
 
   function newGame(opts = {}) {
     const mode = opts.mode || 'standard';
-    const difficulty = mode === 'daily' ? 'normal' : opts.difficulty || 'normal';
+    const difficulty = mode === 'daily' || mode === 'runway' ? 'normal' : opts.difficulty || 'normal';
     seed(opts.seed != null ? opts.seed : Math.random() * 4294967296);
     const s = {
       v: VERSION,
@@ -212,8 +212,62 @@
     s.staff.push({ id: 'founder', name: opts.founder || 'You', role: 'researcher', skill: 3, salary: 0, morale: 100, founder: true, trainUntil: 0, perk: 0 });
     refreshCandidates(s);
     news(s, `${s.company} opens for business in a garage. The AI boom is just getting started.`, 'good');
+    if (mode === 'runway') s.runway = { q: 1, start: 0, booked: 0, strikes: 0, history: [], meeting: null, endless: false };
     return s;
   }
+
+  // ---------- Runway: quarters, quotas and the board ----------
+
+  const RW = D.RUNWAY;
+  function quotaFor(q) {
+    if (q <= RW.quotas.length) return RW.quotas[q - 1];
+    return Math.round(RW.quotas.at(-1) * Math.pow(RW.endlessGrowth, q - RW.quotas.length));
+  }
+
+  // where the current quarter stands: days, booked revenue and where it is heading
+  function quarterView(s, v) {
+    const r = s.runway;
+    if (!r) return null;
+    const quota = quotaFor(r.q);
+    const elapsed = s.day - r.start;
+    const left = Math.max(0, RW.quarterDays - elapsed);
+    const daily = (v || derive(s)).mrr / 30;
+    const projected = r.booked + daily * left;
+    return { q: r.q, quota, booked: r.booked, elapsed, left, days: RW.quarterDays, projected, hit: r.booked >= quota, onPace: projected >= quota, strikes: r.strikes, ipoQuarter: r.q === RW.quotas.length };
+  }
+
+  // the quarter ends on its last day, or early when the player rings the bell
+  function endQuarter(s, how) {
+    const r = s.runway;
+    const view = quarterView(s);
+    const rec = { q: r.q, quota: view.quota, booked: Math.round(r.booked), hit: view.hit, left: view.left, how, day: s.day, cash: Math.round(s.cash), equity: s.equity };
+    if (!rec.hit) {
+      r.strikes++;
+      if (r.strikes < RW.strikes) {
+        s.equity *= 1 - RW.downRound;
+        rec.equity = s.equity;
+        news(s, `${s.company} missed its Q${rec.q} quota. The board forced a down round.`, 'bad', true);
+      }
+    } else news(s, `${s.company} beat its Q${rec.q} quota: ${Math.round((rec.booked / rec.quota) * 100)}% of target.`, 'good');
+    rec.strikes = r.strikes;
+    r.history.push(rec);
+    log(s, 'quarter', { q: rec.q, hit: rec.hit, booked: rec.booked, quota: rec.quota, how });
+    if (s.cash < 0) {
+      rec.end = 'broke';
+      endGame(s, false, `${s.company} ended Q${rec.q} out of cash, and the board shut it down.`, 'runway');
+    } else if (r.strikes >= RW.strikes) {
+      rec.end = 'fired';
+      endGame(s, false, `After a second missed quota in Q${rec.q}, the board replaced you as CEO.`, 'runway');
+    } else if (rec.hit && rec.q === RW.quotas.length && !r.endless) rec.ipo = true;
+    r.meeting = rec;
+    // the next quarter starts now; the clock waits until the meeting is closed
+    r.q++;
+    r.start = s.day;
+    r.booked = 0;
+  }
+
+  // what counts as a run's result: quarters cleared, then valuation
+  const runwayCleared = (s) => (s.runway ? s.runway.history.filter((h) => h.hit).length : 0);
 
   // ---------- modifiers ----------
 
@@ -716,6 +770,7 @@
       if (v.service >= 0.75) {
         s.cash += c.monthly / 30;
         s.month.crev += c.monthly / 30;
+        if (s.runway) s.runway.booked += c.monthly / 30;
       } else if (++c.strikes >= 10) {
         s.contracts = s.contracts.filter((x) => x !== c);
         s.hype = Math.max(0, s.hype - 4);
@@ -919,6 +974,7 @@
 
   function tick(s) {
     if (s.over && !s.over.sandbox) return;
+    if (s.runway && s.runway.meeting) return; // the board is meeting
     s.day++;
     s.effects = s.effects.filter((e) => e.until > s.day);
     let v = derive(s);
@@ -936,6 +992,7 @@
     s.month.rev += rev;
     s.cash += v.productRevenue / 30;
     s.month.prev += v.productRevenue / 30;
+    if (s.runway) s.runway.booked += (v.subRevenue + v.productRevenue) / 30;
     if (!s.training && s.models.length) s.stats.idleDays = (s.stats.idleDays || 0) + 1;
     contractsDaily(s, v);
 
@@ -970,13 +1027,19 @@
 
     if (s.cash < 0 && s.mode !== 'sandbox') {
       s.stats.negDays++;
-      if (s.stats.negDays === 1) news(s, 'You are out of cash. Raise money or cut costs within 90 days.', 'bad', true);
-      if (s.stats.negDays === 75) news(s, '15 days until bankruptcy.', 'bad', true);
-      if (s.stats.negDays >= 90) endGame(s, false, `${s.company} ran out of money and shut down.`);
+      if (s.runway) {
+        // on Runway the board only looks at the books when the quarter ends
+        if (s.stats.negDays === 1) news(s, 'You are out of cash. Be back above zero when the quarter ends, or the board shuts you down.', 'bad', true);
+      } else {
+        if (s.stats.negDays === 1) news(s, 'You are out of cash. Raise money or cut costs within 90 days.', 'bad', true);
+        if (s.stats.negDays === 75) news(s, '15 days until bankruptcy.', 'bad', true);
+        if (s.stats.negDays >= 90) endGame(s, false, `${s.company} ran out of money and shut down.`);
+      }
     } else {
       if (s.stats.negDays > 0 && s.cash >= 0) s.flags.recovered = true;
       s.stats.negDays = 0;
     }
+    if (s.runway && !s.over && s.day - s.runway.start >= RW.quarterDays) endQuarter(s, 'clock');
   }
 
   // campaigns run for their cooldown and hold a marketing slot meanwhile
@@ -1335,6 +1398,31 @@
       return ok();
     },
 
+    // Runway: end the quarter early once its quota is met
+    ringBell(s) {
+      const r = s.runway;
+      if (!r || r.meeting || s.over) return no('No quarter is running');
+      if (r.booked < quotaFor(r.q)) return no('The quota is not met yet');
+      endQuarter(s, 'bell');
+      return ok();
+    },
+
+    // Runway: leave the board meeting. After Q8, 'ipo' ends the run with an IPO
+    // and 'endless' keeps going with quotas that grow every quarter.
+    closeMeeting(s, choice) {
+      const r = s.runway;
+      if (!r || !r.meeting) return no('No meeting');
+      const m = r.meeting;
+      r.meeting = null;
+      if (m.ipo) {
+        if (choice === 'endless') {
+          r.endless = true;
+          news(s, `${s.company} stays private and keeps growing.`, 'good', true);
+        } else endGame(s, true, `${s.company} rang the opening bell after ${m.q} quarters. You took it public.`, 'ipo');
+      }
+      return ok();
+    },
+
     launchProduct(s, id) {
       const pd = D.PRODUCTS.find((p) => p.id === id);
       const st = s.products[id];
@@ -1369,7 +1457,7 @@
     newGame, tick, derive, actions: A, campaignSlots, activeCampaigns, fundingView, pushOdds, priceCurve, productCurve, bestNextRun, impact, moraleTarget, shareFactors, migrate, VERSION, align, alignment,
     sizeOf, stat, itemAt, occupied, canPlace, gap, seating, rivalBoost, hooks, news, addEffect, effectMult, itemCost, itemLocked,
     expectedCap, trainingCost, salaryFor, trainCostFor, eventView, resolveEvent, endGame, makeCandidate,
-    dateOf, flagship, topRival, marketSize, techTotals, refreshCandidates,
+    dateOf, flagship, topRival, marketSize, techTotals, refreshCandidates, quotaFor, quarterView, runwayCleared,
     util: { clamp, rand, randi, pick, sat, round1, random },
     seed,
     rngState: () => rngState,
